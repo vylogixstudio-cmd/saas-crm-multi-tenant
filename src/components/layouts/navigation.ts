@@ -283,6 +283,14 @@ export const HYBRID_STAFF_OPS: NavItem[] = [
   { name: 'Pengaturan', href: '/dashboard/settings', icon: Settings, permission: null },
 ]
 
+export const HYBRID_STAFF_EXECUTOR_NAVIGATION: NavItem[] = [
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: null },
+  { name: 'Proyek Aktif', href: '/dashboard/projects', icon: Briefcase, permission: 'projects.read' },
+  { name: 'Proyek Selesai', href: '/dashboard/projects/completed', icon: CheckCircle, permission: 'projects.read' },
+  { name: 'Pesan & Catatan', href: '/dashboard/messages', icon: MessageSquare, permission: null },
+  { name: 'Pengaturan', href: '/dashboard/settings', icon: Settings, permission: null },
+]
+
 export function getHybridNavigation(role: string | null | undefined): NavItem[] {
   if (!role) return HYBRID_NAVIGATION;
 
@@ -300,8 +308,9 @@ export function getHybridNavigation(role: string | null | undefined): NavItem[] 
       return PHYSICAL_STAFF_PRODUCTION;
     case 'staff_shipping':
       return PHYSICAL_STAFF_SHIPPING;
-    // Eksekutor pakai nav digital, tapi di-pre-filtered
+    // Eksekutor pakai nav khusus
     case 'staff_executor':
+      return HYBRID_STAFF_EXECUTOR_NAVIGATION;
     case 'staff_digital':
       return DIGITAL_NAVIGATION;
     // Admin, super_admin → menu master hybrid
