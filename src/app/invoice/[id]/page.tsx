@@ -4,6 +4,7 @@ import { ArrowLeft, Building2, CheckCircle, Clock, AlertTriangle, Tag, ExternalL
 import PrintButton from './PrintButton'
 import UploadProofForm from './UploadProofForm'
 import SplitInvoiceClient from './SplitInvoiceClient'
+import InvoicePaymentActions from './InvoicePaymentActions'
 
 export default async function PublicInvoiceDetailPage({
   params
@@ -27,7 +28,8 @@ export default async function PublicInvoiceDetailPage({
       ),
       profiles:client_id (
         full_name,
-        email
+        email,
+        whatsapp_number
       ),
       projects (
         title,
@@ -113,7 +115,18 @@ export default async function PublicInvoiceDetailPage({
             <ArrowLeft size={16} /> Kembali ke Portal Proyek
           </Link>
           
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <InvoicePaymentActions
+              invoiceId={invoice.id}
+              invoiceNumber={invoice.invoice_number}
+              title={invoice.title || project?.title || 'Layanan Agensi'}
+              amount={Number(invoice.amount)}
+              status={invoice.status}
+              dueDate={invoice.due_date}
+              orgName={org?.name || 'Agensi'}
+              clientName={client?.full_name || 'Klien'}
+              clientPhone={client?.whatsapp_number || null}
+            />
             <PrintButton />
           </div>
         </div>

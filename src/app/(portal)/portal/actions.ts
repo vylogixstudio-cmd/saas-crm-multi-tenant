@@ -480,3 +480,70 @@ export async function uploadClientAsset(projectId: string, formData: FormData) {
   revalidatePath('/dashboard/design/assets')
   return { success: true }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// payInvoiceWithGatewaySandbox — Simulasi pembayaran instan via QRIS / VA Sandbox
+// ─────────────────────────────────────────────────────────────────────────────
+export async function payInvoiceWithGatewaySandbox(invoiceId: string, paymentMethod: string) {
+  const { user, error: authError } = await getAuthenticatedClient()
+  if (authError || !user) return { error: authError }
+
+  const supabaseAdmin = createAdminClient()
+
+  // 1. Fetch invoice details
+  const { data: invoice, error: invErr } = await supabaseAdmin
+    .from('fin_invoices')
+    .select('id, organization_id, client_id, project_id, invoice_number, title, amount, status, organizations(name, whatsapp_number), profiles:client_id(full_name, whatsapp_number)')
+    .eq('id', invoiceId)
+    .eq('client_id', user.id)
+    .single()
+
+  if (invErr || !invoice) {
+    return { error: 'Invoice tidak ditemukan atau bukan milik akun Anda.' }
+  }
+
+  // 2. Update invoice status to PAID
+  const { error: updErr } = await supabaseAdmin
+    .from('fin_invoices')
+    .update({
+      status: 'PAID',
+    })
+    .eq('id', invoiceId)
+
+  if (updErr) {
+    return { error: 'Gagal memperbarui status invoice: ' + updErr.message }
+  }
+
+  // 3. Update project payment status if project exists
+  if (invoice.project_id) {
+    await supabaseAdmin
+      .from('projects')
+      .update({ payment_status: 'paid' })
+      .eq('id', invoice.project_id)
+  }
+
+  // 4. Record income transaction in ledger
+  await supabaseAdmin
+    .from('fin_transactions')
+    .insert({
+      organization_id: invoice.organization_id,
+      type: 'INCOME',
+      amount: invoice.amount,
+      description: `Pembayaran Online (${paymentMethod}) — Faktur ${invoice.invoice_number}`,
+      reference_id: invoice.id,
+      reference_type: 'INVOICE',
+    })
+
+  revalidatePath('/portal')
+  revalidatePath(`/portal/invoice/${invoiceId}`)
+  revalidatePath('/dashboard')
+  revalidatePath('/dashboard/finance')
+  revalidatePath('/dashboard/pos')
+
+  return { 
+    success: true, 
+    invoiceNumber: invoice.invoice_number,
+    amount: invoice.amount,
+    orgName: (invoice.organizations as any)?.name || 'Agensi',
+  }
+}

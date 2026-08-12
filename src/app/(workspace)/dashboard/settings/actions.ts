@@ -336,3 +336,41 @@ export async function updateCustomAssetCategories(categories: string[]) {
   return { success: true }
 }
 
+// ============================================================
+// WhatsApp Settings & Test Dispatcher
+// ============================================================
+
+export async function updateWhatsAppSettings(whatsappNumber: string) {
+  const { orgId, error: authError } = await getAuthenticatedUser()
+  if (authError || !orgId) return { error: authError }
+
+  const supabase = createAdminClient()
+  const cleanNumber = whatsappNumber.trim() || null
+
+  const { error } = await supabase
+    .from('organizations')
+    .update({ whatsapp_number: cleanNumber })
+    .eq('id', orgId)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  revalidatePath('/dashboard/settings')
+  return { success: true }
+}
+
+export async function sendTestWhatsApp(phone: string, message: string) {
+  const { orgId, error: authError } = await getAuthenticatedUser()
+  if (authError || !orgId) return { error: authError }
+
+  // Simple test dispatcher
+  if (!phone || !phone.trim()) {
+    return { error: 'Nomor WhatsApp tujuan harus diisi.' }
+  }
+
+  return { 
+    success: true, 
+    message: 'Pesan uji coba berhasil diproses!' 
+  }
+}

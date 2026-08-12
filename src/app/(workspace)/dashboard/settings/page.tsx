@@ -10,6 +10,7 @@ import AgencyServicesCard from './AgencyServicesCard'
 import AssetCategoriesCard from './AssetCategoriesCard'
 import ChangePasswordCard from './ChangePasswordCard'
 import SheetsConfig from '@/components/AgencySettings/SheetsConfig'
+import WhatsAppConfig from '@/components/AgencySettings/WhatsAppConfig'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -161,6 +162,10 @@ export default async function SettingsPage() {
                 serviceAccountEmail={serviceAccountEmail} 
                 isPhysical={org.module_physical === true || org.industry_type === 'PHYSICAL' || org.industry_type === 'MANUFACTURING'} 
                 isHybrid={(org.module_digital !== false && org.industry_type !== 'PHYSICAL') && (org.module_physical === true || org.industry_type === 'HYBRID')}
+              />
+              <WhatsAppConfig
+                initialWhatsAppNumber={org.whatsapp_number}
+                orgName={org.name}
               />
             </>
           )}
