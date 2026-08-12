@@ -17,7 +17,7 @@ RETURNS trigger AS $$
 BEGIN
   -- Lakukan HTTP POST ke endpoint Next.js dengan membawa organization_id
   PERFORM net.http_post(
-      url:='https://DOMAIN_ANDA.vercel.app/api/webhooks/sheets-realtime',
+      url:='https://vylogix-saas-crm.vercel.app/api/webhooks/sheets-realtime',
       body:=json_build_object('agency_id', COALESCE(NEW.organization_id, OLD.organization_id))::jsonb,
       headers:='{"Content-Type": "application/json"}'::jsonb
   );
