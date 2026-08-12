@@ -67,6 +67,7 @@ export default async function SuperAdminDashboard() {
   let totalStaffAll = 0
   let totalSaaSRevenue = 0
   let totalServicesAll = 0
+  let totalTransactionsAll = 0
 
   if (orgs && orgs.length > 0) {
     const orgIds = orgs.map((a) => a.id).filter(Boolean)
@@ -76,7 +77,7 @@ export default async function SuperAdminDashboard() {
       supabaseAdmin.from('profiles').select('id, email, role, organization_id'),
       supabaseAdmin.from('projects').select('id, organization_id'),
       supabaseAdmin.from('agency_services').select('id, name, organization_id').in('organization_id', orgIds).order('name', { ascending: true }),
-      supabaseAdmin.from('fin_transactions').select('organization_id, amount, type').eq('type', 'INCOME'),
+      supabaseAdmin.from('fin_transactions').select('id, organization_id, amount, type'),
       supabaseAdmin.from('agency_sheet_configs').select('agency_id, sheet_id')
     ])
 
@@ -88,8 +89,9 @@ export default async function SuperAdminDashboard() {
 
     totalClientsAll = allProfiles.filter(p => p.role === 'client').length
     totalStaffAll = allProfiles.filter(p => p.role !== 'client' && p.role !== 'super_admin').length
-    totalSaaSRevenue = transactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
+    totalSaaSRevenue = transactions.filter(tx => tx.type === 'INCOME').reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
     totalServicesAll = servicesData.length
+    totalTransactionsAll = transactions.length
 
     agencies = orgs.map((a) => {
       const orgProfiles = allProfiles.filter(p => p.organization_id === a.id)
@@ -277,7 +279,7 @@ export default async function SuperAdminDashboard() {
             totalProjects,
             totalOrgs: totalAgencies,
             totalProfiles: totalStaffAll + totalClientsAll,
-            totalTransactions: 0, // will be fetched live in Health panel via reload
+            totalTransactions: totalTransactionsAll,
             totalServices: totalServicesAll,
           }}
         />
