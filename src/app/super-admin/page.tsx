@@ -1,10 +1,10 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-import SuperAdminForm from './SuperAdminForm'
-import AgenciesList from './AgenciesList'
-import { Crown, LogOut, Building2, Users, Layers, Ban, CheckCircle } from 'lucide-react'
+import { Crown, LogOut, Building2, Users, Layers, Ban, CheckCircle, Zap, Globe, Package, DollarSign } from 'lucide-react'
 import { logout } from '@/app/login/actions'
 import { createAdminClient } from '@/utils/supabase/admin'
+import { getBroadcasts, getSystemSettings } from '@/lib/superAdminStore'
+import SuperAdminTabs from './SuperAdminTabs'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ interface AgencyService {
   organization_id: string
 }
 
-interface EnrichedAgency {
+export interface EnrichedAgency {
   id: string
   name: string
   slug: string
@@ -23,9 +23,16 @@ interface EnrichedAgency {
   is_active: boolean | null
   license_expires_at: string | null
   auto_suspend: boolean | null
-  temp_password: string | null
+  industry_type?: string
+  module_digital?: boolean
+  module_physical?: boolean
+  monthly_sales_target?: number
   profiles: { email: string | undefined }
   projectCount: number
+  staffCount: number
+  clientCount: number
+  totalRevenue: number
+  hasSheets: boolean
   services: AgencyService[]
 }
 
@@ -46,7 +53,7 @@ export default async function SuperAdminDashboard() {
     .single()
 
   if (!profile || (profile.role !== 'super_admin' && profile.role !== 'superadmin')) {
-    redirect('/admin/dashboard')
+    redirect('/dashboard')
   }
 
   // ── Fetch base org list ────────────────────────────────────────────────────
@@ -56,41 +63,55 @@ export default async function SuperAdminDashboard() {
     .order('created_at', { ascending: false })
 
   let agencies: EnrichedAgency[] = []
+  let totalClientsAll = 0
+  let totalStaffAll = 0
+  let totalSaaSRevenue = 0
+  let totalServicesAll = 0
 
   if (orgs && orgs.length > 0) {
     const orgIds = orgs.map((a) => a.id).filter(Boolean)
 
-    // Parallel fetch: admin emails + project counts + services + total clients
-    const [profilesResult, projectCountsResult, servicesResult, totalClientsResult] = await Promise.all([
-      orgIds.length > 0
-        ? supabaseAdmin.from('profiles').select('email, organization_id').in('organization_id', orgIds).eq('role', 'admin')
-        : Promise.resolve({ data: [] }),
-      orgIds.length > 0
-        ? supabaseAdmin.from('projects').select('organization_id').in('organization_id', orgIds)
-        : Promise.resolve({ data: [] }),
-      orgIds.length > 0
-        ? supabaseAdmin
-            .from('agency_services')
-            .select('id, name, organization_id')
-            .in('organization_id', orgIds)
-            .order('name', { ascending: true })
-        : Promise.resolve({ data: [] }),
-      supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client')
+    // Parallel fetch: profiles, projects, services, transactions, sheet_configs
+    const [profilesResult, projectCountsResult, servicesResult, txResult, sheetsResult] = await Promise.all([
+      supabaseAdmin.from('profiles').select('id, email, role, organization_id'),
+      supabaseAdmin.from('projects').select('id, organization_id'),
+      supabaseAdmin.from('agency_services').select('id, name, organization_id').in('organization_id', orgIds).order('name', { ascending: true }),
+      supabaseAdmin.from('fin_transactions').select('organization_id, amount, type').eq('type', 'INCOME'),
+      supabaseAdmin.from('agency_sheet_configs').select('agency_id, sheet_id')
     ])
 
-    const profilesData = profilesResult.data ?? []
+    const allProfiles = profilesResult.data ?? []
     const projectRows = projectCountsResult.data ?? []
     const servicesData = (servicesResult.data ?? []) as AgencyService[]
-    var totalClients = totalClientsResult.count ?? 0
+    const transactions = txResult.data ?? []
+    const sheetConfigs = sheetsResult.data ?? []
 
-    agencies = orgs.map((a) => ({
-      ...a,
-      profiles: { email: profilesData.find((p) => p.organization_id === a.id)?.email },
-      projectCount: projectRows.filter((p) => p.organization_id === a.id).length,
-      services: servicesData.filter((s) => s.organization_id === a.id),
-    })) as EnrichedAgency[]
-  } else {
-    var totalClients = 0
+    totalClientsAll = allProfiles.filter(p => p.role === 'client').length
+    totalStaffAll = allProfiles.filter(p => p.role !== 'client' && p.role !== 'super_admin').length
+    totalSaaSRevenue = transactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
+    totalServicesAll = servicesData.length
+
+    agencies = orgs.map((a) => {
+      const orgProfiles = allProfiles.filter(p => p.organization_id === a.id)
+      const adminEmail = orgProfiles.find(p => p.role === 'admin')?.email
+      const staffCount = orgProfiles.filter(p => p.role !== 'client').length
+      const clientCount = orgProfiles.filter(p => p.role === 'client').length
+      const projectCount = projectRows.filter(p => p.organization_id === a.id).length
+      const orgTx = transactions.filter(tx => tx.organization_id === a.id)
+      const totalRev = orgTx.reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
+      const hasSheets = sheetConfigs.some(s => s.agency_id === a.id && Boolean(s.sheet_id))
+
+      return {
+        ...a,
+        profiles: { email: adminEmail },
+        projectCount,
+        staffCount,
+        clientCount,
+        totalRevenue: totalRev,
+        hasSheets,
+        services: servicesData.filter((s) => s.organization_id === a.id),
+      }
+    }) as EnrichedAgency[]
   }
 
   // ── Metrics Calculation ────────────────────────────────────────────────────
@@ -98,6 +119,10 @@ export default async function SuperAdminDashboard() {
   let activeAgencies = 0
   let suspendedAgencies = 0
   let totalProjects = 0
+
+  let digitalCount = 0
+  let physicalCount = 0
+  let hybridCount = 0
 
   agencies.forEach((a) => {
     totalProjects += a.projectCount
@@ -109,125 +134,158 @@ export default async function SuperAdminDashboard() {
     } else {
       activeAgencies++
     }
+
+    const isIndPhysical = a.industry_type === 'PHYSICAL' || a.industry_type === 'MANUFACTURING'
+    const isPhys = a.module_physical === true || isIndPhysical
+    const isDig = a.module_digital !== false && !isIndPhysical
+    if (isDig && isPhys) {
+      hybridCount++
+    } else if (isPhys) {
+      physicalCount++
+    } else {
+      digitalCount++
+    }
   })
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  return (
-    <div className="min-h-screen bg-[#F8F9FA] pt-16 px-4 sm:px-8 pb-10 font-sans">
-      <div className="max-w-7xl mx-auto mt-6">
+  // ── Fetch broadcasts + settings ────────────────────────────────────────────
+  const broadcasts = getBroadcasts()
+  const systemSettings = getSystemSettings()
 
-        {/* ── Header Super Admin ─────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-8 mt-2 bg-[#111827] p-6 sm:p-7 rounded-[20px] shadow-lg border border-white/5 text-white">
-          <div className="flex items-center gap-4">
-            <div className="p-3.5 bg-amber-500/20 rounded-[16px] text-amber-400 border border-amber-500/20 shrink-0">
-              <Crown size={30} />
+  return (
+    <div className="min-h-screen bg-[#F8F9FA] pt-12 px-4 sm:px-8 pb-12 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
+
+        {/* ── Header Super Admin (Console Style) ───────────────────────────── */}
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-gradient-to-r from-gray-900 via-[#111827] to-slate-900 p-6 sm:p-8 rounded-[28px] shadow-xl border border-white/10 text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+            <Crown size={120} />
+          </div>
+          
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="p-3.5 bg-amber-500/20 rounded-[18px] text-amber-400 border border-amber-500/30 shrink-0 shadow-inner">
+              <Crown size={32} />
             </div>
             <div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="font-extrabold text-2xl font-['Plus_Jakarta_Sans']">God Mode</h1>
-                <span className="px-2 py-1 bg-amber-500 text-amber-950 text-[10px] font-extrabold uppercase tracking-widest rounded-md">
+              <div className="flex items-center gap-3 flex-wrap mb-1">
+                <h1 className="font-extrabold text-2xl sm:text-3xl font-['Plus_Jakarta_Sans'] tracking-tight">
+                  SaaS Master Console
+                </h1>
+                <span className="px-3 py-0.5 bg-amber-400 text-amber-950 text-[10px] font-black uppercase tracking-widest rounded-full shadow-sm">
                   SUPER ADMIN
                 </span>
+                {systemSettings.maintenance_mode && (
+                  <span className="px-3 py-0.5 bg-rose-500 text-white text-[10px] font-black uppercase tracking-widest rounded-full animate-pulse">
+                    🔧 MAINTENANCE
+                  </span>
+                )}
               </div>
-              <p className="text-white/60 text-sm mt-1">Pusat Kendali Multi-Tenant Vylogix SaaS</p>
+              <p className="text-gray-400 text-xs sm:text-sm">
+                Pusat Kontrol Multi-Tenant Vylogix CRM • Manajemen {totalAgencies} Tenant Agensi & Ekosistem
+              </p>
             </div>
           </div>
 
-          <form action={logout}>
+          <form action={logout} className="relative z-10">
             <button
               type="submit"
-              className="flex items-center gap-2 text-xs font-bold text-white/70 hover:text-white px-5 py-2.5 border border-white/10 rounded-[12px] hover:bg-white/5 transition-all self-start sm:self-auto"
+              className="flex items-center gap-2 text-xs font-bold text-gray-300 hover:text-white px-5 py-2.5 bg-white/5 border border-white/10 rounded-full hover:bg-rose-600 hover:border-rose-600 transition-all shadow-sm"
             >
-              <LogOut size={16} /> Keluar dari God Mode
+              <LogOut size={15} /> Keluar Console
             </button>
           </form>
         </div>
 
-        {/* ── Analytics Dashboard ─────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white p-6 rounded-[20px] shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition-shadow">
+        {/* ── SaaS Global KPIs ─────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          
+          {/* Card 1: Total Tenants */}
+          <div className="bg-white p-6 rounded-[24px] shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <p className="text-[#6B7280] text-xs font-bold uppercase tracking-wider mb-1">Total Agensi</p>
-                <h3 className="text-3xl font-extrabold text-[#111827]">{totalAgencies}</h3>
+                <p className="text-[#6B7280] text-[11px] font-bold uppercase tracking-wider mb-1">Tenant Agensi</p>
+                <h3 className="text-3xl font-extrabold text-[#111827]">{totalAgencies} <span className="text-sm font-medium text-gray-400">Agensi</span></h3>
               </div>
               <div className="p-3 bg-blue-50 text-blue-600 rounded-[14px]">
-                <Building2 size={24} />
+                <Building2 size={22} />
               </div>
             </div>
-            <div className="text-xs text-[#6B7280] font-medium flex gap-2">
-              <span className="flex items-center gap-1 text-emerald-600"><CheckCircle size={14}/> {activeAgencies} Aktif</span>
+            <div className="text-xs text-[#6B7280] font-medium flex gap-2 pt-2 border-t border-gray-100">
+              <span className="flex items-center gap-1 text-emerald-600 font-bold"><CheckCircle size={13}/> {activeAgencies} Aktif</span>
               <span className="text-gray-300">|</span>
-              <span className="flex items-center gap-1 text-rose-600"><Ban size={14}/> {suspendedAgencies} Suspended</span>
+              <span className="flex items-center gap-1 text-rose-600 font-bold"><Ban size={13}/> {suspendedAgencies} Suspended</span>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-[20px] shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start mb-4">
+          {/* Card 2: Tenant Distribution */}
+          <div className="bg-white p-6 rounded-[24px] shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-3">
               <div>
-                <p className="text-[#6B7280] text-xs font-bold uppercase tracking-wider mb-1">Total Proyek</p>
-                <h3 className="text-3xl font-extrabold text-[#111827]">{totalProjects}</h3>
+                <p className="text-[#6B7280] text-[11px] font-bold uppercase tracking-wider mb-1">Distribusi Tipe</p>
+                <h3 className="text-2xl font-extrabold text-[#111827]">{digitalCount}D &bull; {physicalCount}F &bull; {hybridCount}H</h3>
               </div>
               <div className="p-3 bg-purple-50 text-purple-600 rounded-[14px]">
-                <Layers size={24} />
+                <Zap size={22} />
               </div>
             </div>
-            <p className="text-xs text-[#6B7280] font-medium">Proyek dari seluruh agensi</p>
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-500 pt-2 border-t border-gray-100">
+              <span className="text-blue-600">{digitalCount} Digital</span> &bull;
+              <span className="text-orange-600">{physicalCount} Fisik</span> &bull;
+              <span className="text-purple-600">{hybridCount} Hybrid</span>
+            </div>
           </div>
 
-          <div className="bg-white p-6 rounded-[20px] shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition-shadow">
+          {/* Card 3: Total Users */}
+          <div className="bg-white p-6 rounded-[24px] shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <p className="text-[#6B7280] text-xs font-bold uppercase tracking-wider mb-1">Total Klien</p>
-                <h3 className="text-3xl font-extrabold text-[#111827]">{totalClients}</h3>
+                <p className="text-[#6B7280] text-[11px] font-bold uppercase tracking-wider mb-1">Total Pengguna</p>
+                <h3 className="text-3xl font-extrabold text-[#111827]">{totalStaffAll + totalClientsAll}</h3>
               </div>
               <div className="p-3 bg-amber-50 text-amber-600 rounded-[14px]">
-                <Users size={24} />
+                <Users size={22} />
               </div>
             </div>
-            <p className="text-xs text-[#6B7280] font-medium">End-client dari seluruh agensi</p>
+            <div className="text-xs text-[#6B7280] font-medium flex gap-2 pt-2 border-t border-gray-100">
+              <span>👥 <strong>{totalStaffAll}</strong> Tim & Staf</span>
+              <span className="text-gray-300">|</span>
+              <span>👤 <strong>{totalClientsAll}</strong> Klien</span>
+            </div>
           </div>
 
-          <div className="bg-white p-6 rounded-[20px] shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 to-teal-50 opacity-50 pointer-events-none"></div>
-            <div className="flex justify-between items-start mb-4 relative z-10">
+          {/* Card 4: Total Volume Transaksi */}
+          <div className="bg-white p-6 rounded-[24px] shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-4">
               <div>
-                <p className="text-[#6B7280] text-xs font-bold uppercase tracking-wider mb-1">System Status</p>
-                <h3 className="text-2xl font-extrabold text-emerald-600">All Good</h3>
+                <p className="text-[#6B7280] text-[11px] font-bold uppercase tracking-wider mb-1">Volume Bisnis Terproses</p>
+                <h3 className="text-2xl font-extrabold text-emerald-600">Rp {totalSaaSRevenue.toLocaleString('id-ID')}</h3>
               </div>
-              <div className="p-3 bg-emerald-100 text-emerald-600 rounded-[14px]">
-                <Crown size={24} />
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-[14px]">
+                <DollarSign size={22} />
               </div>
             </div>
-            <p className="text-xs text-[#6B7280] font-medium relative z-10">Server & Database running smoothly</p>
+            <p className="text-xs text-[#6B7280] font-medium pt-2 border-t border-gray-100">Dari {totalProjects} proyek & pesanan tenant</p>
           </div>
+
         </div>
 
-        {/* ── Main content ───────────────────────────────────────────────── */}
-        <div className="space-y-6">
-          {/* Register Form */}
-          <div className="w-full">
-            <SuperAdminForm />
-          </div>
+        {/* ── Tabbed Main Content ───────────────────────────────────────────── */}
+        <SuperAdminTabs
+          agencies={agencies}
+          broadcasts={broadcasts}
+          settings={systemSettings}
+          globalStats={{
+            totalProjects,
+            totalOrgs: totalAgencies,
+            totalProfiles: totalStaffAll + totalClientsAll,
+            totalTransactions: 0, // will be fetched live in Health panel via reload
+            totalServices: totalServicesAll,
+          }}
+        />
 
-          {/* Agencies Table */}
-          <div className="bg-white rounded-[20px] shadow-sm border border-black/5 overflow-hidden">
-            <div className="p-6 border-b border-black/5 bg-[#F8F9FA]/60 flex justify-between items-center">
-              <h2 className="font-extrabold text-lg text-[#111827] flex items-center gap-2">
-                <Building2 className="text-[#2563EB]" size={20} />
-                Agensi Terdaftar
-              </h2>
-              <span className="px-3 py-1 bg-[#EFF6FF] text-[#2563EB] text-xs font-bold rounded-full">
-                {agencies.length} Total Tenant
-              </span>
-            </div>
-            <AgenciesList agencies={agencies} />
-          </div>
-        </div>
-
-        <p className="text-center text-xs text-[#6B7280] mt-10">
-          Anda sedang mengakses area terlarang. Segala perubahan di sini bersifat absolut.
+        <p className="text-center text-xs text-gray-400">
+          Vylogix SaaS Platform Multi-Tenant &bull; Hak Akses Master Super Administrator
         </p>
+
       </div>
     </div>
   )

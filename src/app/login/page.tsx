@@ -1,5 +1,5 @@
 import { login } from './actions'
-import AutoFillButtons from './AutoFillButtons'
+import FastAccountSwitcher from '@/components/auth/FastAccountSwitcher'
 
 export const metadata = {
   title: 'Masuk — Vylogix CRM & Client Portal',
@@ -25,9 +25,9 @@ export default async function LoginPage({
   const errorMessage = resolvedParams?.message
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-[#F8F9FA] flex flex-col items-center justify-center p-4 py-8 sm:py-12">
       {/* ── Brand Header ── */}
-      <div className="mb-8 text-center select-none">
+      <div className="mb-6 text-center select-none">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#2563EB] shadow-lg shadow-blue-500/25 mb-4">
           {/* Shield Icon — Raw SVG, no external icon library required */}
           <svg
@@ -44,7 +44,7 @@ export default async function LoginPage({
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
         </div>
-        <h1 className="text-2xl font-extrabold text-[#111827] tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-[#111827] tracking-tight">
           Vylogix{' '}
           <span className="text-[#2563EB]">Portal</span>
         </h1>
@@ -53,12 +53,14 @@ export default async function LoginPage({
         </p>
       </div>
 
-      {/* ── Card ── */}
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-black/[0.06] shadow-xl shadow-black/[0.04] p-8">
-        
-        <AutoFillButtons />
+      {/* ── Container with Fast Account Switcher & Login Form ── */}
+      <div className="w-full max-w-4xl flex flex-col items-center">
+        {/* Fast Account Switcher Widget */}
+        <FastAccountSwitcher />
 
-        <form action={login} className="space-y-5">
+        {/* ── Card ── */}
+        <div className="w-full max-w-xl bg-white rounded-2xl border border-black/[0.06] shadow-xl shadow-black/[0.04] p-8">
+          <form action={login} className="space-y-5">
           {/* Email */}
           <div>
             <label
@@ -123,15 +125,16 @@ export default async function LoginPage({
             </div>
           )}
 
-          {/* Submit */}
-          <button
-            id="login-submit-button"
-            type="submit"
-            className="w-full bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] active:scale-[0.99] text-white font-semibold py-3.5 rounded-xl transition-all duration-150 shadow-md shadow-blue-500/20 mt-1 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/50"
-          >
-            Akses Portal
-          </button>
-        </form>
+            {/* Submit */}
+            <button
+              id="login-submit-button"
+              type="submit"
+              className="w-full bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] active:scale-[0.99] text-white font-semibold py-3.5 rounded-xl transition-all duration-150 shadow-md shadow-blue-500/20 mt-1 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/50"
+            >
+              Akses Portal
+            </button>
+          </form>
+        </div>
       </div>
 
       {/* ── Footer ── */}

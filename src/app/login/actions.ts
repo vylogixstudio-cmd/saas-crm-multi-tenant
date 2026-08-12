@@ -74,7 +74,7 @@ export async function login(formData: FormData) {
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single<{ role: 'super_admin' | 'admin' | 'client' }>()
+    .single<{ role: 'super_admin' | 'admin' | 'client' | 'staff_ops' | 'staff_executor' | 'staff_finance' | 'staff_digital' | 'staff_physical' | 'staff_cs' | 'staff_design' | 'staff_warehouse' | 'staff_production' | 'staff_shipping' }>()
 
   if (profileError || !profile) {
     // Authentication succeeded but no profile record was found.
@@ -83,14 +83,24 @@ export async function login(formData: FormData) {
     redirect('/login?message=Profil+akun+tidak+ditemukan.+Hubungi+administrator.')
   }
 
-  // Role-based redirect — no hardcoded email checks anywhere.
+  // Role-based redirect
   switch (profile.role) {
     case 'super_admin':
       redirect('/super-admin')
     case 'admin':
-      redirect('/admin/dashboard')
+    case 'staff_ops':
+    case 'staff_executor': // (Mungkin sisa db lama)
+    case 'staff_finance':
+    case 'staff_digital':
+    case 'staff_physical':
+    case 'staff_cs':
+    case 'staff_design':
+    case 'staff_warehouse':
+    case 'staff_production':
+    case 'staff_shipping':
+      redirect('/dashboard')
     case 'client':
-      redirect('/client/dashboard')
+      redirect('/portal')
     default:
       // Unknown role: sign out and surface an error.
       await supabase.auth.signOut()

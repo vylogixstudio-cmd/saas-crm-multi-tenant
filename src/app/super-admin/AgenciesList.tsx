@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Mail,
   BadgeCheck,
@@ -20,8 +21,9 @@ import {
   UserPlus,
   Users,
   Trash2,
+  Eye,
 } from 'lucide-react'
-import { suspendAgency, updateLicenseExpiry, addAdminToAgency } from './actions'
+import { suspendAgency, updateLicenseExpiry, addAdminToAgency, impersonateAgency } from './actions'
 import AgencyProjects from './AgencyProjects'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -90,9 +92,13 @@ function StatusBadge({ status }: { status: 'active' | 'suspended' | 'expired' })
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function AgenciesList({ agencies }: { agencies: Agency[] }) {
-  const [selectedAgency, setSelectedAgency] = useState<Agency | null>(null)
+export default function AgenciesList({ agencies }: { agencies: any[] }) {
+  const router = useRouter()
+  const [selectedAgency, setSelectedAgency] = useState<any | null>(null)
+  const [activeTab, setActiveTab] = useState<'ALL' | 'DIGITAL' | 'PHYSICAL' | 'HYBRID'>('ALL')
+  const [searchQuery, setSearchQuery] = useState('')
   const [isPending, startTransition] = useTransition()
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null)
 
   // Modal local state (mirrors DB values, editable before save)
   const [expiryDate, setExpiryDate] = useState('')
@@ -106,7 +112,27 @@ export default function AgenciesList({ agencies }: { agencies: Agency[] }) {
   const [addAdminResult, setAddAdminResult] = useState<{ email: string; password: string; name: string } | null>(null)
   const [addAdminError, setAddAdminError] = useState<string | null>(null)
 
-  const openModal = (agency: Agency) => {
+  const getAgencyCategory = (agency: any): 'DIGITAL' | 'PHYSICAL' | 'HYBRID' => {
+    const isIndPhysical = agency.industry_type === 'PHYSICAL' || agency.industry_type === 'MANUFACTURING'
+    const isPhys = agency.module_physical === true || isIndPhysical
+    const isDig = agency.module_digital !== false && !isIndPhysical
+    if (isDig && isPhys) return 'HYBRID'
+    if (isPhys) return 'PHYSICAL'
+    return 'DIGITAL'
+  }
+
+  const filteredAgencies = agencies.filter((agency) => {
+    const cat = getAgencyCategory(agency)
+    const matchesTab = activeTab === 'ALL' ? true : cat === activeTab
+    const matchesSearch = 
+      agency.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      agency.slug?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      agency.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase())
+
+    return matchesTab && matchesSearch
+  })
+
+  const openModal = (agency: any) => {
     setSelectedAgency(agency)
     setExpiryDate(
       agency.license_expires_at
@@ -147,7 +173,7 @@ export default function AgenciesList({ agencies }: { agencies: Agency[] }) {
             ? 'Agensi berhasil diaktifkan kembali.'
             : 'Agensi berhasil di-suspend. Akses login admin telah diblokir.',
         })
-        setSelectedAgency((prev) =>
+        setSelectedAgency((prev: any) =>
           prev ? { ...prev, is_active: isSuspended ? true : false } : null
         )
       }
@@ -196,10 +222,10 @@ export default function AgenciesList({ agencies }: { agencies: Agency[] }) {
           type: 'warning',
           text: 'Lisensi disimpan. Tanggal sudah terlewat — agensi otomatis di-suspend sekarang.',
         })
-        setSelectedAgency((prev) => prev ? { ...prev, is_active: false } : null)
+        setSelectedAgency((prev: any) => prev ? { ...prev, is_active: false } : null)
       } else {
         setFeedbackMsg({ type: 'success', text: 'Pengaturan lisensi berhasil disimpan.' })
-        setSelectedAgency((prev) =>
+        setSelectedAgency((prev: any) =>
           prev
             ? { ...prev, license_expires_at: expiryDate || null, auto_suspend: autoSuspend }
             : null
@@ -210,66 +236,183 @@ export default function AgenciesList({ agencies }: { agencies: Agency[] }) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <>
+    <div className="bg-white rounded-[24px] shadow-sm border border-black/5 overflow-hidden">
+      
+      {/* ── Table Header & Category Tabs ─────────────────────────────────── */}
+      <div className="p-6 border-b border-black/5 bg-[#F8F9FA]/60 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div>
+          <h2 className="font-extrabold text-lg text-[#111827] flex items-center gap-2">
+            <Users className="text-[#2563EB]" size={20} />
+            Daftar Tenant Agensi ({agencies.length})
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Kelola izin lisensi, masa aktif, dan status operasional masing-masing agensi.
+          </p>
+        </div>
+
+        {/* Tab Filters */}
+        <div className="flex items-center p-1 bg-white border border-black/10 rounded-[14px] shadow-xs">
+          <button
+            onClick={() => setActiveTab('ALL')}
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-bold transition-all ${
+              activeTab === 'ALL' ? 'bg-gray-900 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Semua ({agencies.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('DIGITAL')}
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-bold transition-all ${
+              activeTab === 'DIGITAL' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            🌐 Digital
+          </button>
+          <button
+            onClick={() => setActiveTab('PHYSICAL')}
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-bold transition-all ${
+              activeTab === 'PHYSICAL' ? 'bg-orange-500 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            📦 Fisik
+          </button>
+          <button
+            onClick={() => setActiveTab('HYBRID')}
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-bold transition-all ${
+              activeTab === 'HYBRID' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            ⚡ Hybrid
+          </button>
+        </div>
+      </div>
+
       {/* ── Agencies Table ─────────────────────────────────────────────────── */}
       <div className="p-2 overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[800px]">
+        <table className="w-full text-left border-collapse min-w-[950px]">
           <thead>
-            <tr>
-              <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-[#4B5563] border-b border-black/5 w-[35%]">
-                Nama Agensi
-              </th>
-              <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-[#4B5563] border-b border-black/5 w-[28%]">
-                Email Owner
-              </th>
-              <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-[#4B5563] border-b border-black/5 w-[17%]">
-                Status
-              </th>
-              <th className="py-4 px-6 text-xs font-bold uppercase tracking-wider text-[#4B5563] border-b border-black/5 text-right w-[20%]">
-                Aksi
-              </th>
+            <tr className="border-b border-black/5 text-[11px] font-bold uppercase tracking-wider text-[#4B5563] bg-[#F8F9FA]/40">
+              <th className="py-3.5 px-4 rounded-tl-[12px]">Nama Agensi & Tipe</th>
+              <th className="py-3.5 px-4">Email Owner & Kontak</th>
+              <th className="py-3.5 px-4">Pengguna & Proyek</th>
+              <th className="py-3.5 px-4">Volume Bisnis</th>
+              <th className="py-3.5 px-4">Status Lisensi</th>
+              <th className="py-3.5 px-4 text-right rounded-tr-[12px]">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-black/5">
-            {agencies.map((agency) => {
+            {filteredAgencies.map((agency) => {
               const status = resolveStatus(agency)
+              const cat = getAgencyCategory(agency)
+
               return (
                 <tr key={agency.id} className="hover:bg-[#F8F9FA] transition-colors">
-                  <td className="py-4 px-6">
+                  {/* AGENSI & TIPE */}
+                  <td className="py-4 px-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#2563EB] to-cyan-400 text-white flex items-center justify-center font-bold text-lg uppercase shadow-sm shrink-0">
-                        {agency.name.substring(0, 1)}
+                      <div className={`w-10 h-10 rounded-[14px] flex items-center justify-center font-black text-sm uppercase shadow-xs shrink-0 text-white ${
+                        cat === 'HYBRID' ? 'bg-gradient-to-tr from-purple-600 to-fuchsia-600' :
+                        cat === 'PHYSICAL' ? 'bg-gradient-to-tr from-orange-500 to-amber-500' :
+                        'bg-gradient-to-tr from-blue-600 to-cyan-500'
+                      }`}>
+                        {agency.name.substring(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-bold text-[#111827] text-sm">{agency.name}</p>
-                        <p className="text-xs text-[#6B7280]">/{agency.slug}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-extrabold text-[#111827] text-sm">{agency.name}</p>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${
+                            cat === 'HYBRID' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            cat === 'PHYSICAL' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                            'bg-blue-50 text-blue-700 border-blue-200'
+                          }`}>
+                            {cat}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#6B7280] font-mono mt-0.5">/{agency.slug}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="py-4 px-6 align-middle">
-                    <div className="flex items-center gap-2 text-sm text-[#4B5563]">
-                      <Mail size={15} className="text-[#9CA3AF] shrink-0" />
+
+                  {/* OWNER EMAIL */}
+                  <td className="py-4 px-4 align-middle">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-[#111827]">
+                      <Mail size={13} className="text-[#9CA3AF] shrink-0" />
                       {agency.profiles?.email || '—'}
                     </div>
+                    {agency.hasSheets && (
+                      <span className="inline-block mt-1 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">
+                        📊 Google Sheets Aktif
+                      </span>
+                    )}
                   </td>
-                  <td className="py-4 px-6 align-middle">
-                    <StatusBadge status={status} />
+
+                  {/* PENGGUNA & PROYEK */}
+                  <td className="py-4 px-4 align-middle">
+                    <div className="text-xs font-bold text-gray-900">
+                      👥 {agency.staffCount || 0} Staf &bull; 👤 {agency.clientCount || 0} Klien
+                    </div>
+                    <div className="text-[11px] font-medium text-gray-500 mt-0.5">
+                      📁 {agency.projectCount || 0} Proyek Terdata
+                    </div>
                   </td>
-                  <td className="py-4 px-6 text-right align-middle">
-                    <button
-                      onClick={() => openModal(agency)}
-                      className="text-sm font-bold text-[#111827] bg-white border border-black/10 hover:bg-[#F8F9FA] hover:border-[#2563EB] hover:text-[#2563EB] px-5 py-2 rounded-[10px] transition-all shadow-sm"
-                    >
-                      Kelola
-                    </button>
+
+                  {/* TOTAL REVENUE */}
+                  <td className="py-4 px-4 align-middle">
+                    <div className="text-xs font-extrabold text-emerald-600">
+                      Rp {Number(agency.totalRevenue || 0).toLocaleString('id-ID')}
+                    </div>
+                    <div className="text-[10px] text-gray-400 font-medium">
+                      Target: Rp {Number(agency.monthly_sales_target || 0).toLocaleString('id-ID')}
+                    </div>
+                  </td>
+
+                  {/* STATUS LISENSI */}
+                  <td className="py-4 px-4 align-middle">
+                    <div className="flex flex-col gap-1 items-start">
+                      <StatusBadge status={status} />
+                      {agency.license_expires_at && (
+                        <span className="text-[10px] text-gray-400 font-medium flex items-center gap-1">
+                          <Calendar size={10} /> s/d {new Date(agency.license_expires_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* AKSI */}
+                  <td className="py-4 px-4 text-right align-middle">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          setImpersonatingId(agency.id)
+                          startTransition(async () => {
+                            await impersonateAgency(agency.id)
+                            router.push('/dashboard')
+                          })
+                        }}
+                        disabled={impersonatingId === agency.id}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-3 py-2 rounded-[10px] transition-all shadow-xs"
+                        title="Login sebagai tenant ini"
+                      >
+                        {impersonatingId === agency.id
+                          ? <Loader2 size={12} className="animate-spin" />
+                          : <Eye size={12} />}
+                        Masuk Dasbor
+                      </button>
+                      <button
+                        onClick={() => openModal(agency)}
+                        className="text-xs font-extrabold text-[#111827] bg-white border border-black/10 hover:bg-[#111827] hover:text-white px-4 py-2 rounded-[10px] transition-all shadow-xs"
+                      >
+                        Kelola Lisensi
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )
             })}
-            {agencies.length === 0 && (
+            {filteredAgencies.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-12 px-6 text-center text-[#4B5563] text-sm">
-                  Belum ada agensi yang terdaftar di platform ini.
+                <td colSpan={6} className="py-12 px-6 text-center text-[#4B5563] text-sm">
+                  Tidak ada tenant agensi yang cocok dengan filter tab ini.
                 </td>
               </tr>
             )}
@@ -372,9 +515,9 @@ export default function AgenciesList({ agencies }: { agencies: Agency[] }) {
                 <p className="text-xs font-bold uppercase tracking-wider text-[#4B5563] mb-2 flex items-center gap-1.5">
                   <Layers size={12} /> Jasa Aktif
                 </p>
-                {selectedAgency.services.length > 0 ? (
+                {selectedAgency.services?.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
-                    {selectedAgency.services.map((svc) => (
+                    {selectedAgency.services.map((svc: any) => (
                       <span
                         key={svc.id}
                         className="px-2.5 py-1 bg-[#EFF6FF] text-[#2563EB] text-[11px] font-bold rounded-full border border-blue-100"
@@ -579,6 +722,6 @@ export default function AgenciesList({ agencies }: { agencies: Agency[] }) {
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }

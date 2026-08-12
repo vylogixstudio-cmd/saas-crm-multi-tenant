@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import { createClientProject } from '@/app/admin/dashboard/actions'
+import { createClientProject } from '@/app/(workspace)/dashboard/actions'
+import CurrencyInput from '@/components/CurrencyInput'
 
 
 interface AgencyService {
@@ -87,33 +88,13 @@ export default function CreateProjectModal({ clients, services = [] }: { clients
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4B5563] mb-1.5">Total Harga (Rp)</label>
-                  <input 
-                    type="text" 
-                    name="totalPrice" 
-                    required 
-                    placeholder="Contoh: 1.000.000" 
-                    className="w-full px-4 py-3 rounded-[12px] bg-[#F8F9FA] border border-black/10 text-sm focus:outline-none focus:border-[#2563EB] transition-colors"
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '')
-                      e.target.value = val ? new Intl.NumberFormat('id-ID').format(parseInt(val)) : ''
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4B5563] mb-1.5">DP Dibayar (Rp)</label>
-                  <input 
-                    type="text" 
-                    name="dpPaid" 
-                    placeholder="Contoh: 500.000" 
-                    className="w-full px-4 py-3 rounded-[12px] bg-[#F8F9FA] border border-black/10 text-sm focus:outline-none focus:border-[#2563EB] transition-colors"
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '')
-                      e.target.value = val ? new Intl.NumberFormat('id-ID').format(parseInt(val)) : ''
-                    }}
-                  />
-                </div>
+                <CurrencyInput name="totalPrice" label="Total Harga (Rp)" />
+                <CurrencyInput name="dpPaid" label="DP Dibayar (Rp)" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#4B5563] mb-1.5">Tenggat Waktu (Deadline)</label>
+                <input type="date" name="deadline" className="w-full px-4 py-3 rounded-[12px] bg-[#F8F9FA] border border-black/10 text-sm focus:outline-none focus:border-[#2563EB] transition-colors" />
               </div>
 
               {errorMsg && (

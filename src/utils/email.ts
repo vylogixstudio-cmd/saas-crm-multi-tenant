@@ -65,7 +65,7 @@ export async function sendProjectCompletedEmail({
               
               <p>Tahap <em>development</em> & <em>quality assurance</em> telah rampung. Sekarang saatnya Anda meninjau hasil akhir proyek, melihat detail garansi, dan mengunduh aset terkait (jika ada).</p>
               
-              <a href="https://vylogix.com/client/dashboard" class="cta-button">Cek Portal Klien Sekarang</a>
+              <a href="https://vylogix.com/dashboard" class="cta-button">Cek Portal Klien Sekarang</a>
             </div>
             <div class="footer">
               <p>Pesan ini dikirim secara otomatis oleh sistem CRM ${agencyName}.<br>Silakan balas email ini jika Anda memiliki pertanyaan lebih lanjut.</p>

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     const supabaseAdmin = createAdminClient()
 
-    // 2. Cari proyek yang berumur > 30 hari DAN skip_asset_cleanup = false
+    // 2. Cari proyek yang SUDAH SELESAI ('completed'), berumur > 30 hari, DAN skip_asset_cleanup = false
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
     const thirtyDaysAgoISO = thirtyDaysAgo.toISOString()
@@ -28,13 +28,14 @@ export async function GET(request: Request) {
     const { data: expiredProjects, error: projectError } = await supabaseAdmin
       .from('projects')
       .select('id, title, skip_asset_cleanup')
+      .eq('status', 'completed')
       .lt('created_at', thirtyDaysAgoISO)
       .eq('skip_asset_cleanup', false)
 
     if (projectError) throw projectError
 
     if (!expiredProjects || expiredProjects.length === 0) {
-      return NextResponse.json({ message: 'Tidak ada proyek kedaluwarsa yang memerlukan penghapusan aset.' })
+      return NextResponse.json({ message: 'Tidak ada proyek selesai kedaluwarsa yang memerlukan penghapusan aset.' })
     }
 
     const projectIds = expiredProjects.map(p => p.id)
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
 
     // 4. Eksekusi fungsi penghapusan file di Supabase Storage secara total
     const fileUrls = assets.map(a => a.file_url)
-    const deletePhysicalSuccess = await deletePhysicalAssets(fileUrls, 'project-assets')
+    const deletePhysicalSuccess = await deletePhysicalAssets(fileUrls, 'assets')
 
     if (!deletePhysicalSuccess) {
       throw new Error('Gagal menghapus file fisik di Supabase Storage. Penghapusan baris database dibatalkan untuk mencegah Ghost Files.')

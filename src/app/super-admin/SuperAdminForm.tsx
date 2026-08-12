@@ -128,6 +128,24 @@ export default function SuperAdminForm() {
               />
             </div>
           </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#4B5563] mb-2">Tipe Agensi (Industri)</label>
+            <div className="relative">
+              <select
+                name="industryType"
+                className="w-full px-4 py-3 bg-[#F8F9FA] border border-black/10 rounded-[12px] text-sm font-medium focus:border-[#2563EB] outline-none transition-all appearance-none cursor-pointer"
+                defaultValue="DIGITAL"
+              >
+                <option value="DIGITAL">Digital Agency (Software, Desain, Sosmed)</option>
+                <option value="PHYSICAL">Physical (Percetakan, Konveksi, Pabrik)</option>
+                <option value="HYBRID">Hybrid (Digital + Physical)</option>
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-black/30">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+            </div>
+          </div>
         </div>
 
         <button 

@@ -12,7 +12,10 @@ interface Project {
   profiles: {
     full_name: string | null
     email: string | null
-  } | null
+  } | {
+    full_name: string | null
+    email: string | null
+  }[] | null
 }
 
 export default function AgencyProjects({ organizationId }: { organizationId: string }) {
@@ -95,7 +98,9 @@ export default function AgencyProjects({ organizationId }: { organizationId: str
                 <div className="min-w-0 pr-4">
                   <p className="text-sm font-bold text-[#111827] truncate">{project.title}</p>
                   <p className="text-xs text-[#6B7280] truncate mt-0.5">
-                    Klien: {project.profiles?.full_name || project.profiles?.email || '—'}
+                    Klien: {Array.isArray(project.profiles) 
+                      ? (project.profiles[0]?.full_name || project.profiles[0]?.email || '—') 
+                      : (project.profiles?.full_name || project.profiles?.email || '—')}
                   </p>
                   <p className="text-[10px] text-[#9CA3AF] mt-0.5">
                     Dibuat: {new Date(project.created_at).toLocaleDateString('id-ID')}

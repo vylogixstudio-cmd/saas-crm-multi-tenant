@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/utils/supabase/admin'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
 import { registerAgencySchema } from '@/utils/validations'
 import { randomBytes } from 'crypto'
 import { logAudit, AUDIT_ACTIONS } from '@/utils/audit'
@@ -81,6 +82,11 @@ export async function registerAgency(formData: FormData) {
   }
 
   const { agencyName, ownerEmail } = validation.data
+  
+  // Ambil industry_type dari form (default: DIGITAL)
+  const industryType = (formData.get('industryType') as string) || 'DIGITAL'
+  const validTypes = ['DIGITAL', 'PHYSICAL', 'HYBRID']
+  const safeIndustryType = validTypes.includes(industryType) ? industryType : 'DIGITAL'
 
   const slug = agencyName
     .toLowerCase()
@@ -89,10 +95,6 @@ export async function registerAgency(formData: FormData) {
 
   // Password kriptografis — TIDAK disimpan ke database
   const generatedPassword = generateStrongPassword()
-
-  // 🚫 DEMO MODE: Intercept database mutations
-  await new Promise(r => setTimeout(r, 500))
-  return { error: '👀 Mode Demo: Tindakan ini disimulasikan dan tidak disimpan.' }
 
   try {
     // 1. Buat user baru di Supabase Auth
@@ -107,14 +109,24 @@ export async function registerAgency(formData: FormData) {
 
     const newUserId = authData.user.id
 
-    // 2. Buat organisasi dulu
-    //    CATATAN: Tidak ada kolom temp_password — password hanya ditampilkan
-    //    sekali di UI dan tidak disimpan ke database.
+    // Tentukan flag modul berdasarkan industryType
+    const moduleDigital = safeIndustryType === 'DIGITAL' || safeIndustryType === 'HYBRID'
+    const modulePhysical = safeIndustryType === 'PHYSICAL' || safeIndustryType === 'HYBRID'
+
+    // 2. Buat organisasi dengan industry_type & flag modul
     const { data: orgData, error: orgError } = await supabase
       .from('organizations')
-      .insert({ name: agencyName, slug, is_active: true })
+      .insert({ 
+        name: agencyName, 
+        slug, 
+        is_active: true, 
+        industry_type: safeIndustryType,
+        module_digital: moduleDigital,
+        module_physical: modulePhysical
+      })
       .select('id')
       .single()
+
 
     if (orgError) {
       // Rollback: hapus auth user jika org gagal dibuat
@@ -138,12 +150,30 @@ export async function registerAgency(formData: FormData) {
       return { error: 'Gagal mengatur profil admin: ' + profileError.message }
     }
 
-    // 4. Provision 3 layanan default
-    const defaultServices = [
-      { organization_id: orgData.id, name: 'Website' },
-      { organization_id: orgData.id, name: 'Graphic Design' },
-      { organization_id: orgData.id, name: 'Social Media Management' },
-    ]
+    // 4. Provision layanan default berdasarkan industry_type
+    let defaultServices: { organization_id: string; name: string; service_category: string }[] = []
+    
+    if (safeIndustryType === 'DIGITAL') {
+      defaultServices = [
+        { organization_id: orgData.id, name: 'Pembuatan Website',         service_category: 'DIGITAL' },
+        { organization_id: orgData.id, name: 'Desain Grafis',             service_category: 'DIGITAL' },
+        { organization_id: orgData.id, name: 'Social Media Management',   service_category: 'DIGITAL' },
+      ]
+    } else if (safeIndustryType === 'PHYSICAL') {
+      defaultServices = [
+        { organization_id: orgData.id, name: 'Cetak Banner / Spanduk',    service_category: 'PHYSICAL' },
+        { organization_id: orgData.id, name: 'Merchandise & Kaos',        service_category: 'PHYSICAL' },
+        { organization_id: orgData.id, name: 'Cetak Kartu Nama',          service_category: 'PHYSICAL' },
+      ]
+    } else {
+      // HYBRID: dapat keduanya
+      defaultServices = [
+        { organization_id: orgData.id, name: 'Pembuatan Website',         service_category: 'DIGITAL' },
+        { organization_id: orgData.id, name: 'Desain Grafis',             service_category: 'DIGITAL' },
+        { organization_id: orgData.id, name: 'Cetak Banner / Spanduk',    service_category: 'PHYSICAL' },
+        { organization_id: orgData.id, name: 'Merchandise & Kaos',        service_category: 'PHYSICAL' },
+      ]
+    }
 
     const { error: srvError } = await supabase.from('agency_services').insert(defaultServices)
     if (srvError) {
@@ -193,10 +223,6 @@ export async function suspendAgency(orgId: string, shouldSuspend: boolean) {
   if (!orgId) return { error: 'ID organisasi tidak valid.' }
 
   const supabase = createAdminClient()
-
-  // 🚫 DEMO MODE: Intercept database mutations
-  await new Promise(r => setTimeout(r, 500))
-  return { error: '👀 Mode Demo: Tindakan ini disimulasikan dan tidak disimpan.' }
 
   const { error } = await supabase
     .from('organizations')
@@ -256,10 +282,6 @@ export async function updateLicenseExpiry(
     updatePayload.is_active = isActive
   }
 
-  // 🚫 DEMO MODE: Intercept database mutations
-  await new Promise(r => setTimeout(r, 500))
-  return { error: '👀 Mode Demo: Tindakan ini disimulasikan dan tidak disimpan.' }
-
   const { error } = await supabase
     .from('organizations')
     .update(updatePayload)
@@ -304,10 +326,6 @@ export async function addAdminToAgency(
 
   // Generate password kriptografis
   const generatedPassword = generateStrongPassword(14)
-
-  // 🚫 DEMO MODE: Intercept database mutations
-  await new Promise(r => setTimeout(r, 500))
-  return { error: '👀 Mode Demo: Tindakan ini disimulasikan dan tidak disimpan.' }
 
   // Buat user baru di Auth
   const { data: authData, error: createError } = await supabase.auth.admin.createUser({
@@ -394,10 +412,6 @@ export async function removeAdminFromAgency(adminUserId: string, orgId: string) 
 
   if (!profile) return { error: 'Admin tidak ditemukan di organisasi ini.' }
 
-  // 🚫 DEMO MODE: Intercept database mutations
-  await new Promise(r => setTimeout(r, 500))
-  return { error: '👀 Mode Demo: Tindakan ini disimulasikan dan tidak disimpan.' }
-
   // Hapus dari Supabase Auth sekalian (hard delete)
   const { error: deleteError } = await supabase.auth.admin.deleteUser(adminUserId)
   if (deleteError) return { error: deleteError.message }
@@ -449,10 +463,6 @@ export async function toggleProjectRetention(projectId: string, currentStatus: b
 
   const supabase = createAdminClient()
 
-  // 🚫 DEMO MODE: Intercept database mutations
-  await new Promise(r => setTimeout(r, 500))
-  return { error: '👀 Mode Demo: Tindakan ini disimulasikan dan tidak disimpan.' }
-
   const { error } = await supabase
     .from('projects')
     .update({ skip_asset_cleanup: !currentStatus })
@@ -464,4 +474,130 @@ export async function toggleProjectRetention(projectId: string, currentStatus: b
   // tapi kita bisa tetap sediakan.
   return { success: true, skip_asset_cleanup: !currentStatus }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMPERSONATION (LOGIN AS TENANT)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function impersonateAgency(organizationId: string) {
+  const { authorized, error: authError } = await requireSuperAdmin()
+  if (!authorized) return { error: authError }
+
+  if (!organizationId) return { error: 'ID Organisasi tidak valid.' }
+
+  const cookieStore = await cookies()
+  cookieStore.set('vylogix_impersonate_org', organizationId, {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 2, // 2 jam
+  })
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function stopImpersonation() {
+  const cookieStore = await cookies()
+  cookieStore.delete('vylogix_impersonate_org')
+  revalidatePath('/dashboard')
+  revalidatePath('/super-admin')
+  return { success: true }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BROADCAST ANNOUNCEMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createBroadcastAction(formData: FormData) {
+  const { authorized, error: authError } = await requireSuperAdmin()
+  if (!authorized) return { error: authError }
+
+  const title = (formData.get('title') as string) || ''
+  const message = (formData.get('message') as string) || ''
+  const type = ((formData.get('type') as string) || 'info') as 'info' | 'warning' | 'danger' | 'success'
+  const target_agency_id = (formData.get('target_agency_id') as string) || null
+
+  if (!title.trim() || !message.trim()) {
+    return { error: 'Judul dan isi pengumuman wajib diisi.' }
+  }
+
+  const { createBroadcast } = await import('@/lib/superAdminStore')
+  const bc = createBroadcast({
+    title: title.trim(),
+    message: message.trim(),
+    type,
+    target_agency_id: target_agency_id && target_agency_id !== 'ALL' ? target_agency_id : null,
+    is_active: true
+  })
+
+  revalidatePath('/super-admin')
+  revalidatePath('/dashboard')
+  return { success: true, broadcast: bc }
+}
+
+export async function toggleBroadcastAction(id: string, isActive: boolean) {
+  const { authorized, error: authError } = await requireSuperAdmin()
+  if (!authorized) return { error: authError }
+
+  const { toggleBroadcastStatus } = await import('@/lib/superAdminStore')
+  toggleBroadcastStatus(id, isActive)
+
+  revalidatePath('/super-admin')
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function deleteBroadcastAction(id: string) {
+  const { authorized, error: authError } = await requireSuperAdmin()
+  if (!authorized) return { error: authError }
+
+  const { deleteBroadcast } = await import('@/lib/superAdminStore')
+  deleteBroadcast(id)
+
+  revalidatePath('/super-admin')
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SYSTEM SETTINGS & MAINTENANCE MODE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function updateSystemSettingsAction(formData: FormData) {
+  const { authorized, error: authError } = await requireSuperAdmin()
+  if (!authorized) return { error: authError }
+
+  const platform_name = (formData.get('platform_name') as string) || 'Vylogix SaaS CRM'
+  const support_whatsapp = (formData.get('support_whatsapp') as string) || ''
+  const support_email = (formData.get('support_email') as string) || ''
+  const maintenance_message = (formData.get('maintenance_message') as string) || ''
+  const maintenance_target = ((formData.get('maintenance_target') as string) || 'ALL') as 'ALL' | 'AGENCY' | 'CLIENT'
+
+  const { saveSystemSettings } = await import('@/lib/superAdminStore')
+  const updated = saveSystemSettings({
+    platform_name,
+    support_whatsapp,
+    support_email,
+    maintenance_message,
+    maintenance_target
+  })
+
+  revalidatePath('/super-admin')
+  revalidatePath('/dashboard')
+  return { success: true, settings: updated }
+}
+
+export async function toggleMaintenanceModeAction(enabled: boolean) {
+  const { authorized, error: authError } = await requireSuperAdmin()
+  if (!authorized) return { error: authError }
+
+  const { saveSystemSettings } = await import('@/lib/superAdminStore')
+  const updated = saveSystemSettings({ maintenance_mode: enabled })
+
+  revalidatePath('/super-admin')
+  revalidatePath('/dashboard')
+  return { success: true, maintenance_mode: updated.maintenance_mode }
+}
+
 

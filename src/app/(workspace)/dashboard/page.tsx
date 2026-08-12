@@ -1,0 +1,31 @@
+import { createClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import AdminView from './AdminView'
+import ClientView from './ClientView'
+
+export default async function DashboardPage({ searchParams }: { searchParams?: any }) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    redirect('/login')
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) {
+    redirect('/login')
+  }
+
+  // Jika rolenya client, render halaman khusus klien
+  if (profile.role === 'client') {
+    return <ClientView searchParams={searchParams} />
+  }
+
+  // Jika rolenya staf/admin/super_admin, render halaman admin dashboard
+  return <AdminView />
+}

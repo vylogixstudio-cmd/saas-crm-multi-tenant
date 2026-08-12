@@ -1,14 +1,15 @@
 'use client'
 
 import { useTransition } from 'react'
-import { updateRevisionStatus } from '@/app/admin/dashboard/actions'
+import { updateRevisionStatus } from '@/app/(workspace)/dashboard/actions'
 
 interface RevisionStatusSelectProps {
   revisionId: string
   currentStatus: string
+  isReadOnly?: boolean
 }
 
-export default function RevisionStatusSelect({ revisionId, currentStatus }: RevisionStatusSelectProps) {
+export default function RevisionStatusSelect({ revisionId, currentStatus, isReadOnly = false }: RevisionStatusSelectProps) {
   const [isPending, startTransition] = useTransition()
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -16,6 +17,14 @@ export default function RevisionStatusSelect({ revisionId, currentStatus }: Revi
     startTransition(() => {
       updateRevisionStatus(revisionId, newStatus)
     })
+  }
+
+  if (isReadOnly) {
+    return (
+      <span className="px-3 py-1.5 bg-[#F8F9FA] border border-black/10 rounded-lg text-xs font-bold text-[#111827]">
+        {currentStatus}
+      </span>
+    )
   }
 
   return (

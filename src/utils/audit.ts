@@ -99,19 +99,21 @@ export async function logAudit(payload: AuditPayload): Promise<void> {
         cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
         
         // Fire and forget the delete query
-        supabase
-          .from('audit_logs')
-          .delete()
-          .eq('organization_id', payload.organizationId)
-          .lt('created_at', cutoffDate.toISOString())
-          .then(({ error }) => {
-            if (error && process.env.NODE_ENV === 'development') {
-              console.error('[Audit Cleanup Error]', error.message)
-            }
-          })
-          .catch((err) => {
-            console.error('[Audit Cleanup Exception]', err)
-          })
+        const runCleanup = async () => {
+          const { error } = await supabase
+            .from('audit_logs')
+            .delete()
+            .eq('organization_id', payload.organizationId)
+            .lt('created_at', cutoffDate.toISOString())
+            
+          if (error && process.env.NODE_ENV === 'development') {
+            console.error('[Audit Cleanup Error]', error.message)
+          }
+        }
+        
+        runCleanup().catch(err => {
+          console.error('[Audit Cleanup Exception]', err)
+        })
       }
     }
   } catch (err) {
@@ -135,6 +137,7 @@ export const AUDIT_ACTIONS = {
 
   // Client
   CLIENT_CREATE:         'client.create',
+  CLIENT_UPDATE:         'client.update',
   CLIENT_DELETE:         'client.delete',
 
   // Revision / Bug Report
@@ -144,6 +147,7 @@ export const AUDIT_ACTIONS = {
 
   // Asset
   ASSET_UPLOAD:          'asset.upload',
+  ASSET_DELETE:          'asset.delete',
 
   // Agency (Super Admin actions)
   AGENCY_CREATE:         'agency.create',

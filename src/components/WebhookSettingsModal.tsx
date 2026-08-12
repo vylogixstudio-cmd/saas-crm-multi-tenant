@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Webhook, X, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react'
-import { updateWebhookUrl } from '@/app/admin/dashboard/actions'
+import { updateWebhookUrl } from '@/app/(workspace)/dashboard/actions'
 
 interface WebhookSettingsModalProps {
   currentUrl: string | null

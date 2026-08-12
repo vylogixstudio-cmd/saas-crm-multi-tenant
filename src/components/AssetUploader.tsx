@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { uploadAssetToSupabase } from '@/app/client/dashboard/actions'
+import { uploadAssetToSupabase } from '@/app/(workspace)/dashboard/actions'
 import { UploadCloud, File, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 
 // ── Constants ────────────────────────────────────────────────────────────────

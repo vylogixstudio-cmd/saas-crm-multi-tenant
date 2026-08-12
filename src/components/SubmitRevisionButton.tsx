@@ -4,14 +4,14 @@ import { useFormStatus } from 'react-dom'
 import { Loader2 } from 'lucide-react'
 
 interface Props {
-  isCompleted: boolean
+  isUpdateMode: boolean
 }
 
-export default function SubmitRevisionButton({ isCompleted }: Props) {
+export default function SubmitRevisionButton({ isUpdateMode }: Props) {
   const { pending } = useFormStatus()
   
-  const defaultText = isCompleted ? 'Kirim Laporan Bug' : 'Ajukan Revisi'
-  const loadingText = isCompleted ? 'Mengirim Laporan...' : 'Mengirim Revisi...'
+  const defaultText = isUpdateMode ? 'Kirim Pengajuan Update / Bug' : 'Ajukan Revisi'
+  const loadingText = isUpdateMode ? 'Mengirim Pengajuan...' : 'Mengirim Revisi...'
 
   return (
     <button 

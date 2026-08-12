@@ -5,8 +5,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Type Definitions
 // ---------------------------------------------------------------------------
 
-type UserRole = 'super_admin' | 'admin' | 'client'
-
 interface OrganizationData {
   is_active: boolean
   auto_suspend: boolean
@@ -14,7 +12,7 @@ interface OrganizationData {
 }
 
 interface ProfileWithOrg {
-  role: UserRole
+  role: string
   organization_id: string | null
   organizations: OrganizationData | null
 }
@@ -23,7 +21,7 @@ interface ProfileWithOrg {
 // Route Definitions
 // ---------------------------------------------------------------------------
 
-const PROTECTED_ROUTE_PREFIXES = ['/super-admin', '/admin', '/client']
+const PROTECTED_ROUTE_PREFIXES = ['/super-admin', '/dashboard', '/portal']
 const PUBLIC_ONLY_ROUTES = ['/login', '/']
 
 function isProtectedRoute(pathname: string): boolean {
@@ -55,22 +53,16 @@ function isOrganizationSuspended(org: OrganizationData): boolean {
 // Role Guard Logic
 // ---------------------------------------------------------------------------
 
-function getRoleRequiredForPath(pathname: string): UserRole | null {
+function getRoleRequiredForPath(pathname: string): string | null {
   if (pathname.startsWith('/super-admin')) return 'super_admin'
-  if (pathname.startsWith('/admin')) return 'admin'
-  if (pathname.startsWith('/client')) return 'client'
+  // Untuk /(workspace)/dashboard, RBAC dinamis ditangani di level halaman/layout Server Components
   return null
 }
 
-function getDefaultRedirectForRole(role: UserRole): string {
-  switch (role) {
-    case 'super_admin':
-      return '/super-admin'
-    case 'admin':
-      return '/admin/dashboard'
-    case 'client':
-      return '/client/dashboard'
-  }
+function getDefaultRedirectForRole(role: string): string {
+  if (role === 'super_admin') return '/super-admin'
+  if (role === 'client') return '/portal'
+  return '/dashboard' // Admin, Staff
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +82,6 @@ function redirectWithCookies(url: URL | string, supabaseResponse: NextResponse) 
 // ---------------------------------------------------------------------------
 
 export async function updateSession(request: NextRequest) {
-  // We must carry supabaseResponse through so cookies are properly propagated.
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -102,13 +93,10 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          // First, set on the request (needed for createServerClient internals).
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           )
-          // Recreate supabaseResponse with the updated request.
           supabaseResponse = NextResponse.next({ request })
-          // Then propagate to the outgoing response.
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           )
@@ -117,9 +105,6 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  // IMPORTANT: Use auth.getUser() — NOT auth.getSession() — for cryptographic
-  // server-side token verification. getSession() trusts the client cookie value
-  // without re-validating it against the Supabase auth server.
   const {
     data: { user },
     error: userError,
@@ -128,9 +113,6 @@ export async function updateSession(request: NextRequest) {
   const url = request.nextUrl.clone()
   const { pathname } = url
 
-  // ---------------------------------------------------------------------------
-  // Case 1: No authenticated user
-  // ---------------------------------------------------------------------------
   if (userError || !user) {
     if (isProtectedRoute(pathname)) {
       url.pathname = '/login'
@@ -139,69 +121,54 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse
   }
 
-  // ---------------------------------------------------------------------------
-  // Case 2: Authenticated user — fetch profile + org in ONE roundtrip
-  // We use a relational join to avoid the N+1 query anti-pattern.
-  // ---------------------------------------------------------------------------
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role, organization_id, organizations(is_active, auto_suspend, license_expires_at)')
     .eq('id', user.id)
     .single<ProfileWithOrg>()
 
-  // If the profile is missing, we cannot determine access rights.
-  // Redirect to login to prevent a silent bypass.
   if (profileError || !profile) {
-    // Sign out the dangling session and send to login.
     await supabase.auth.signOut()
     url.pathname = '/login'
     return redirectWithCookies(url, supabaseResponse)
   }
 
-  // ---------------------------------------------------------------------------
-  // Case 3: Authenticated user on a public-only route → redirect to dashboard
-  // ---------------------------------------------------------------------------
   if (isPublicOnlyRoute(pathname)) {
     url.pathname = getDefaultRedirectForRole(profile.role)
     return redirectWithCookies(url, supabaseResponse)
   }
 
-  // ---------------------------------------------------------------------------
-  // Case 4: Authenticated user on a protected route — run guards
-  // ---------------------------------------------------------------------------
   if (isProtectedRoute(pathname)) {
-    // --- Guard 4a: Auto-Suspend Check ---
-    //
-    // 📖 DESAIN KEPUTUSAN:
-    //    Suspend adalah masalah bisnis antara Vylogix (super_admin) dan Agency (admin).
-    //    Client adalah pengguna akhir yang tidak bersalah — mereka tetap boleh
-    //    akses dashboard dan lihat progress proyek mereka seperti biasa.
-    //
-    //    Yang kena blokir saat suspend: hanya role 'admin'
-    //    Yang bebas: 'super_admin' (évidemment) dan 'client'
-    if (profile.role === 'admin') {
+    // Suspend hanya berlaku untuk admin/staff, BUKAN super_admin dan BUKAN client
+    if (profile.role !== 'client' && profile.role !== 'super_admin') {
       const org = profile.organizations
 
       if (!org) {
-        // Admin tidak punya org — sesuatu yang aneh, blokir untuk keamanan
         url.pathname = '/suspended'
         return redirectWithCookies(url, supabaseResponse)
       }
 
       if (isOrganizationSuspended(org)) {
-        // Org kena suspend → blokir admin, arahkan ke halaman info
-        // Halaman /suspended menampilkan nomor WA Vylogix Studio agar
-        // admin bisa menghubungi untuk perpanjang lisensi
         url.pathname = '/suspended'
         return redirectWithCookies(url, supabaseResponse)
       }
     }
 
-    // --- Guard 4b: Role-Based Access Control (RBAC) ---
     const requiredRole = getRoleRequiredForPath(pathname)
 
     if (requiredRole !== null && profile.role !== requiredRole) {
-      // User authenticated tapi akses bagian role lain → arahkan ke dasboard mereka
+      url.pathname = getDefaultRedirectForRole(profile.role)
+      return redirectWithCookies(url, supabaseResponse)
+    }
+
+    // Guard: klien tidak boleh akses /dashboard
+    if (pathname.startsWith('/dashboard') && profile.role === 'client') {
+      url.pathname = '/portal'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+
+    // Guard: non-klien tidak boleh akses /portal
+    if (pathname.startsWith('/portal') && profile.role !== 'client') {
       url.pathname = getDefaultRedirectForRole(profile.role)
       return redirectWithCookies(url, supabaseResponse)
     }

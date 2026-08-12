@@ -286,6 +286,8 @@ export const HYBRID_STAFF_OPS: NavItem[] = [
 export const HYBRID_STAFF_EXECUTOR_NAVIGATION: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: null },
   { name: 'Proyek Aktif', href: '/dashboard/projects', icon: Briefcase, permission: 'projects.read' },
+  { name: 'Update Proyek', href: '/dashboard/updates', icon: Wrench, permission: 'projects.read' },
+  { name: 'Domain & Server', href: '/dashboard/infrastructure', icon: Globe, permission: 'projects.read' },
   { name: 'Proyek Selesai', href: '/dashboard/projects/completed', icon: CheckCircle, permission: 'projects.read' },
   { name: 'Pesan & Catatan', href: '/dashboard/messages', icon: MessageSquare, permission: null },
   { name: 'Pengaturan', href: '/dashboard/settings', icon: Settings, permission: null },
