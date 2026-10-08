@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 
 // Inisialisasi Resend SDK dengan API Key dari environment variables
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = new Resend(process.env.RESEND_API_KEY || 'dummy_key_for_build')
 
 interface ProjectCompletedEmailParams {
   clientEmail: string
