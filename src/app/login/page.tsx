@@ -1,5 +1,4 @@
 import { login } from './actions'
-import FastAccountSwitcher from '@/components/auth/FastAccountSwitcher'
 
 export const metadata = {
   title: 'Masuk — Vylogix CRM & Client Portal',
@@ -55,8 +54,6 @@ export default async function LoginPage({
 
       {/* ── Container with Fast Account Switcher & Login Form ── */}
       <div className="w-full max-w-4xl flex flex-col items-center">
-        {/* Fast Account Switcher Widget */}
-        <FastAccountSwitcher />
 
         {/* ── Card ── */}
         <div className="w-full max-w-xl bg-white rounded-2xl border border-black/[0.06] shadow-xl shadow-black/[0.04] p-8">
@@ -144,3 +141,4 @@ export default async function LoginPage({
     </div>
   )
 }
+
