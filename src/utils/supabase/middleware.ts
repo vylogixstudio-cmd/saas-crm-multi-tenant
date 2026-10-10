@@ -13,12 +13,7 @@ interface ProfileWithOrg {
   organizations: OrganizationData | null
 }
 
-const PROTECTED_ROUTE_PREFIXES = ['/dashboard']
 const PUBLIC_ONLY_ROUTES = ['/login', '/']
-
-function isProtectedRoute(pathname: string): boolean {
-  return PROTECTED_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
-}
 
 function isPublicOnlyRoute(pathname: string): boolean {
   return PUBLIC_ONLY_ROUTES.includes(pathname)
@@ -30,10 +25,6 @@ function isOrganizationSuspended(org: OrganizationData): boolean {
     return new Date() > new Date(org.license_expires_at)
   }
   return false
-}
-
-function getDefaultRedirectForRole(role: string): string {
-  return '/dashboard'
 }
 
 function redirectWithCookies(url: URL | string, supabaseResponse: NextResponse) {
@@ -68,14 +59,30 @@ export async function updateSession(request: NextRequest) {
   const url = request.nextUrl.clone()
   const { pathname } = url
 
+  // 1. Deteksi Mode Domain berdasarkan Hostname dari Vercel / Local
+  const hostname = request.headers.get('host') || ''
+  let appMode: 'superadmin' | 'client' | 'agency' = 'agency' // default fallback
+  
+  if (hostname.includes('superadmin')) {
+    appMode = 'superadmin'
+  } else if (hostname.includes('klien') || hostname.includes('client')) {
+    appMode = 'client'
+  }
+  
+  // Override untuk local development (bisa diset di .env.local)
+  if (process.env.NEXT_PUBLIC_APP_MODE === 'superadmin') appMode = 'superadmin'
+  if (process.env.NEXT_PUBLIC_APP_MODE === 'client') appMode = 'client'
+
+  // Jika belum login
   if (userError || !user) {
-    if (isProtectedRoute(pathname)) {
+    if (pathname.startsWith('/dashboard') || pathname.startsWith('/portal') || pathname.startsWith('/super-admin')) {
       url.pathname = '/login'
       return redirectWithCookies(url, supabaseResponse)
     }
     return supabaseResponse
   }
 
+  // Jika sudah login, ambil profile & role
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role, organization_id, organizations(is_active, auto_suspend, license_expires_at)')
@@ -88,23 +95,72 @@ export async function updateSession(request: NextRequest) {
     return redirectWithCookies(url, supabaseResponse)
   }
 
-  // Khusus Web Agensi: Tolak Client dan Super Admin
-  if (profile.role === 'client' || profile.role === 'super_admin') {
-    await supabase.auth.signOut()
-    url.pathname = '/login'
-    return redirectWithCookies(url, supabaseResponse)
-  }
+  // 2. Domain-based Auth Rules
 
-  if (isPublicOnlyRoute(pathname)) {
-    url.pathname = getDefaultRedirectForRole(profile.role)
-    return redirectWithCookies(url, supabaseResponse)
-  }
-
-  if (isProtectedRoute(pathname)) {
-    const org = profile.organizations
-    if (!org || isOrganizationSuspended(org)) {
-      url.pathname = '/suspended'
+  // --- MODE SUPER ADMIN ---
+  if (appMode === 'superadmin') {
+    if (profile.role !== 'super_admin' && profile.role !== 'superadmin') {
+      await supabase.auth.signOut()
+      url.pathname = '/login'
       return redirectWithCookies(url, supabaseResponse)
+    }
+    if (isPublicOnlyRoute(pathname)) {
+      url.pathname = '/super-admin'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+    if (pathname.startsWith('/dashboard') || pathname.startsWith('/portal')) {
+      url.pathname = '/super-admin'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+  } 
+  
+  // --- MODE CLIENT PORTAL ---
+  else if (appMode === 'client') {
+    if (profile.role !== 'client') {
+      await supabase.auth.signOut()
+      url.pathname = '/login'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+    if (isPublicOnlyRoute(pathname)) {
+      url.pathname = '/portal'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+    if (pathname.startsWith('/dashboard') || pathname.startsWith('/super-admin')) {
+      url.pathname = '/portal'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+  } 
+  
+  // --- MODE AGENCY (DASHBOARD) ---
+  else {
+    if (profile.role === 'client' || profile.role === 'super_admin' || profile.role === 'superadmin') {
+      await supabase.auth.signOut()
+      url.pathname = '/login'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+    if (isPublicOnlyRoute(pathname)) {
+      url.pathname = '/dashboard'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+    if (pathname.startsWith('/super-admin') || pathname.startsWith('/portal')) {
+      url.pathname = '/dashboard'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+
+    // Cek suspend khusus untuk agency
+    if (pathname.startsWith('/dashboard')) {
+      const org = profile.organizations
+      if (!org || isOrganizationSuspended(org)) {
+        url.pathname = '/suspended'
+        return redirectWithCookies(url, supabaseResponse)
+      }
+    } else if (pathname === '/suspended') {
+      // Jika tidak suspend tapi akses /suspended
+      const org = profile.organizations
+      if (org && !isOrganizationSuspended(org)) {
+        url.pathname = '/dashboard'
+        return redirectWithCookies(url, supabaseResponse)
+      }
     }
   }
 
