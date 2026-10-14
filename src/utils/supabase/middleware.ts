@@ -150,7 +150,17 @@ export async function updateSession(request: NextRequest) {
     // Cek suspend khusus untuk agency
     if (pathname.startsWith('/dashboard')) {
       const org = profile.organizations
-      if (!org || isOrganizationSuspended(org)) {
+      const hasOrgId = !!profile.organization_id
+
+      // Jika tidak punya org sama sekali → suspended
+      if (!hasOrgId) {
+        url.pathname = '/suspended'
+        return redirectWithCookies(url, supabaseResponse)
+      }
+
+      // Jika org data bisa dibaca & memang suspended → suspended
+      // Jika org null tapi organization_id ada (RLS block) → biarkan masuk, anggap aktif
+      if (org && isOrganizationSuspended(org)) {
         url.pathname = '/suspended'
         return redirectWithCookies(url, supabaseResponse)
       }
@@ -158,6 +168,11 @@ export async function updateSession(request: NextRequest) {
       // Jika tidak suspend tapi akses /suspended
       const org = profile.organizations
       if (org && !isOrganizationSuspended(org)) {
+        url.pathname = '/dashboard'
+        return redirectWithCookies(url, supabaseResponse)
+      }
+      // Jika org null tapi punya organization_id (RLS block) → redirect ke dashboard
+      if (!org && !!profile.organization_id) {
         url.pathname = '/dashboard'
         return redirectWithCookies(url, supabaseResponse)
       }
