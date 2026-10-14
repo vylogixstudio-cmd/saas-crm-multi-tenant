@@ -61,6 +61,8 @@ export async function updateSession(request: NextRequest) {
 
   // 1. Deteksi Mode Domain berdasarkan Hostname dari Vercel / Local
   const hostname = request.headers.get('host') || ''
+  const isLocalhost = hostname.includes('localhost') || hostname.includes('127.0.0.1') || hostname.startsWith('192.168.')
+  
   let appMode: 'superadmin' | 'client' | 'agency' = 'agency' // default fallback
   
   if (hostname.includes('superadmin')) {
@@ -69,7 +71,7 @@ export async function updateSession(request: NextRequest) {
     appMode = 'client'
   }
   
-  // Override untuk local development (bisa diset di .env.local)
+  // Override untuk local development jika diinginkan
   if (process.env.NEXT_PUBLIC_APP_MODE === 'superadmin') appMode = 'superadmin'
   if (process.env.NEXT_PUBLIC_APP_MODE === 'client') appMode = 'client'
 
@@ -95,11 +97,63 @@ export async function updateSession(request: NextRequest) {
     return redirectWithCookies(url, supabaseResponse)
   }
 
-  // 2. Domain-based Auth Rules
+  const isSuperAdmin = profile.role === 'super_admin' || profile.role === 'superadmin'
+  const isClient = profile.role === 'client'
+  const isImpersonating = !!request.cookies.get('vylogix_impersonate_org')?.value
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 2. ATURAN ROUTING LOCALHOST: Fleksibel untuk semua role tanpa signOut
+  // ─────────────────────────────────────────────────────────────────────────
+  if (isLocalhost && !process.env.NEXT_PUBLIC_APP_MODE) {
+    if (isSuperAdmin) {
+      if (isPublicOnlyRoute(pathname)) {
+        url.pathname = '/super-admin'
+        return redirectWithCookies(url, supabaseResponse)
+      }
+      if (pathname.startsWith('/portal')) {
+        url.pathname = '/super-admin'
+        return redirectWithCookies(url, supabaseResponse)
+      }
+      // Super admin bebas akses /super-admin dan /dashboard (impersonasi / testing)
+      return supabaseResponse
+    }
+
+    if (isClient) {
+      if (isPublicOnlyRoute(pathname) || pathname.startsWith('/dashboard') || pathname.startsWith('/super-admin')) {
+        url.pathname = '/portal'
+        return redirectWithCookies(url, supabaseResponse)
+      }
+      return supabaseResponse
+    }
+
+    // Role Agency Staff / Admin di localhost
+    if (isPublicOnlyRoute(pathname) || pathname.startsWith('/super-admin') || pathname.startsWith('/portal')) {
+      url.pathname = '/dashboard'
+      return redirectWithCookies(url, supabaseResponse)
+    }
+
+    // Check suspend untuk agency
+    if (pathname.startsWith('/dashboard')) {
+      const org = profile.organizations
+      if (!profile.organization_id) {
+        url.pathname = '/suspended'
+        return redirectWithCookies(url, supabaseResponse)
+      }
+      if (org && isOrganizationSuspended(org)) {
+        url.pathname = '/suspended'
+        return redirectWithCookies(url, supabaseResponse)
+      }
+    }
+    return supabaseResponse
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3. ATURAN ROUTING PRODUCTION DOMAIN
+  // ─────────────────────────────────────────────────────────────────────────
 
   // --- MODE SUPER ADMIN ---
   if (appMode === 'superadmin') {
-    if (profile.role !== 'super_admin' && profile.role !== 'superadmin') {
+    if (!isSuperAdmin) {
       await supabase.auth.signOut()
       url.pathname = '/login'
       return redirectWithCookies(url, supabaseResponse)
@@ -107,6 +161,10 @@ export async function updateSession(request: NextRequest) {
     if (isPublicOnlyRoute(pathname)) {
       url.pathname = '/super-admin'
       return redirectWithCookies(url, supabaseResponse)
+    }
+    // Jika super admin sedang impersonasi agensi, izinkan akses /dashboard
+    if (pathname.startsWith('/dashboard') && isImpersonating) {
+      return supabaseResponse
     }
     if (pathname.startsWith('/dashboard') || pathname.startsWith('/portal')) {
       url.pathname = '/super-admin'
@@ -116,7 +174,7 @@ export async function updateSession(request: NextRequest) {
   
   // --- MODE CLIENT PORTAL ---
   else if (appMode === 'client') {
-    if (profile.role !== 'client') {
+    if (!isClient) {
       await supabase.auth.signOut()
       url.pathname = '/login'
       return redirectWithCookies(url, supabaseResponse)
@@ -133,7 +191,12 @@ export async function updateSession(request: NextRequest) {
   
   // --- MODE AGENCY (DASHBOARD) ---
   else {
-    if (profile.role === 'client' || profile.role === 'super_admin' || profile.role === 'superadmin') {
+    // Izinkan Super Admin masuk dashboard jika sedang impersonasi
+    if (isSuperAdmin && isImpersonating && pathname.startsWith('/dashboard')) {
+      return supabaseResponse
+    }
+
+    if (isClient || isSuperAdmin) {
       await supabase.auth.signOut()
       url.pathname = '/login'
       return redirectWithCookies(url, supabaseResponse)
