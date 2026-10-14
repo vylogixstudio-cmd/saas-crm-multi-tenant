@@ -1,21 +1,13 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import ShippingClient from './ShippingClient'
 
 export default async function ShippingPage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
-  if (!user) redirect('/login')
+  const { user, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
-  const supabase = createAdminClient()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-    
-  if (!profile?.organization_id) redirect('/login')
+  if (!user) redirect('/login')
+  if (isSuspended) redirect('/suspended')
+  if (!orgId) redirect('/dashboard')
 
   // Fetch projects ready for shipping (packing completed)
   const { data: projects } = await supabase
@@ -25,7 +17,7 @@ export default async function ShippingPage() {
       profiles:client_id (full_name, whatsapp_number, email),
       project_physical_details (*)
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .eq('project_category', 'PHYSICAL')
     .in('status', ['packing_completed', 'ready_to_ship'])
     .order('created_at', { ascending: false })

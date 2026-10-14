@@ -1,51 +1,26 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import { ClipboardList } from 'lucide-react'
 import CompletedProjectsClient from './CompletedProjectsClient'
 
 export default async function CompletedProjectsPage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId: currentOrgId, org, role: userRole, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  const supabase = createAdminClient()
-  let currentOrgId: string | null = null
-
-  // Get org id and role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single()
-    
-  const userRole = profile?.role || 'staff_digital'
-  const isDesigner = userRole === 'staff_design' || userRole === 'staff_physical'
-  const isExecutor = ['staff_executor', 'staff_digital', 'staff_physical', 'staff_design', 'staff_production', 'staff_shipping', 'staff_warehouse'].includes(userRole)
-
-  let isHybrid = false
-
-  if (profile?.organization_id) {
-    const { data: org } = await supabase
-      .from('organizations')
-      .select('id, is_active, auto_suspend, license_expires_at, module_digital, module_physical, industry_type')
-      .eq('id', profile.organization_id)
-      .single()
-
-    const isExpired = org?.license_expires_at ? new Date() > new Date(org.license_expires_at) : false
-    if (!org || org.is_active === false || (org.auto_suspend && isExpired)) {
-      redirect('/suspended')
-    }
-    currentOrgId = org.id
-
-    const isIndustryPhysical = org?.industry_type === 'PHYSICAL' || org?.industry_type === 'MANUFACTURING'
-    const isPhysical = org?.module_physical === true || isIndustryPhysical
-    const isDigital = org?.module_digital !== false && !isIndustryPhysical
-    isHybrid = isDigital && isPhysical
+  if (isSuspended) {
+    redirect('/suspended')
   }
+
+  const isDesigner = userRole === 'staff_design' || userRole === 'staff_physical'
+  const isExecutor = ['staff_executor', 'staff_digital', 'staff_physical', 'staff_design', 'staff_production', 'staff_shipping', 'staff_warehouse'].includes(userRole || '')
+
+  const isIndustryPhysical = org?.industry_type === 'PHYSICAL' || org?.industry_type === 'MANUFACTURING'
+  const isPhysical = org?.module_physical === true || isIndustryPhysical
+  const isDigital = org?.module_digital !== false && !isIndustryPhysical
+  const isHybrid = isDigital && isPhysical
 
   // Filter statuses:
   const allowedStatuses = isDesigner
@@ -134,7 +109,7 @@ export default async function CompletedProjectsPage() {
         <CompletedProjectsClient 
           projects={projects || []}
           paidTermins={paidTermins}
-          userRole={userRole}
+          userRole={userRole || 'admin'}
           isDesigner={isDesigner}
           isExecutor={isExecutor}
           isHybrid={isHybrid}

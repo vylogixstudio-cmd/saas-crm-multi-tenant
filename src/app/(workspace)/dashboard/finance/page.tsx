@@ -1,25 +1,15 @@
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 export const dynamic = 'force-dynamic'
-import { createAdminClient } from '@/utils/supabase/admin'
 import { redirect } from 'next/navigation'
 import { TrendingUp, TrendingDown, DollarSign, WalletCards, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import FinanceClient from './FinanceClient'
 
 export default async function FinancePage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) redirect('/login')
-
-  const supabase = createAdminClient()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-    
-  if (!profile?.organization_id) redirect('/login')
-  const orgId = profile.organization_id
+  if (isSuspended) redirect('/suspended')
+  if (!orgId) redirect('/dashboard')
 
   // Ambil transaksi — batasi 100 terbaru
   const { data: transactions } = await supabase

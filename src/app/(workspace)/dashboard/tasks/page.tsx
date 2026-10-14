@@ -1,5 +1,5 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Clock, LayoutTemplate, MonitorSmartphone, Code2, CheckCircle2, AlertCircle } from 'lucide-react'
 
@@ -15,21 +15,13 @@ const KANBAN_COLUMNS = [
 ]
 
 export default async function TaskBoardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, orgId: orgFilter, isSuspended, supabaseAdmin } = await getTenantContext()
   
-  if (!user) return null
+  if (!user) redirect('/login')
+  if (isSuspended) redirect('/suspended')
+  if (!orgFilter) redirect('/dashboard')
 
-  const supabaseAdmin = createAdminClient()
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-
-  const orgFilter = profile?.organization_id
-
-  const { data: projects } = await supabase
+  const { data: projects } = await supabaseAdmin
     .from('projects')
     .select('id, title, status, progress_percentage, deadline, service_type, profiles:client_id(full_name)')
     .eq('organization_id', orgFilter)

@@ -2,30 +2,24 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 export async function createPosInvoice(formData: FormData) {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, orgId, isImpersonating, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     return { error: 'Sesi tidak valid.' }
   }
 
-  const supabase = createAdminClient()
-
-  // Dapatkan org_id dari admin
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile?.organization_id) {
+  if (!orgId) {
     return { error: 'Organisasi tidak ditemukan.' }
   }
-  const orgId = profile.organization_id
+
+  if (isImpersonating) {
+    return { error: 'Mode Akses Terbatas (Read-Only Guard): Super Admin tidak dapat menerbitkan invoice kasir saat impersonasi.' }
+  }
 
   const title = (formData.get('title') as string)?.trim()
   const clientId = formData.get('client_id') as string || null
@@ -149,20 +143,14 @@ export async function createPosInvoice(formData: FormData) {
 }
 
 export async function markInvoiceAsPaid(invoiceId: string) {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, orgId, isImpersonating, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) return { error: 'Sesi tidak valid.' }
+  if (!orgId) return { error: 'Organisasi tidak ditemukan.' }
 
-  const supabase = createAdminClient()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-    
-  if (!profile?.organization_id) return { error: 'Organisasi tidak ditemukan.' }
-  const orgId = profile.organization_id
+  if (isImpersonating) {
+    return { error: 'Mode Akses Terbatas (Read-Only Guard): Super Admin tidak dapat mengonfirmasi pelunasan tagihan saat impersonasi.' }
+  }
 
   // 1. Ambil invoice
   const { data: invoice, error: invoiceError } = await supabase
@@ -289,26 +277,21 @@ export async function uploadPaymentProof(invoiceId: string, formData: FormData) 
 }
 
 export async function cancelInvoice(invoiceId: string, reason?: string) {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, orgId, isImpersonating, supabaseAdmin: supabase } = await getTenantContext()
+
   if (!user) return { error: 'Sesi tidak valid.' }
+  if (!orgId) return { error: 'Organisasi tidak ditemukan.' }
 
-  const supabase = createAdminClient()
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile?.organization_id) return { error: 'Organisasi tidak ditemukan.' }
+  if (isImpersonating) {
+    return { error: 'Mode Akses Terbatas (Read-Only Guard): Super Admin tidak dapat membatalkan invoice saat impersonasi.' }
+  }
 
   // Pastikan invoice milik org ini sebelum dibatalkan
   const { data: invoice } = await supabase
     .from('fin_invoices')
     .select('id, status, project_id, termin_label')
     .eq('id', invoiceId)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .maybeSingle()
 
   if (!invoice) return { error: 'Invoice tidak ditemukan.' }
@@ -345,7 +328,7 @@ export async function cancelInvoice(invoiceId: string, reason?: string) {
   revalidatePath(`/dashboard/pos/invoice/${invoiceId}`)
   revalidatePath('/dashboard/pos')
   if (invoice.project_id) {
-    await recalculateProjectPaymentStatus(invoice.project_id, profile.organization_id)
+    await recalculateProjectPaymentStatus(invoice.project_id, orgId)
     revalidatePath(`/dashboard/project/${invoice.project_id}`)
   }
   return { success: true }

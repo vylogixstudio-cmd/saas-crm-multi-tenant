@@ -1,30 +1,22 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import GlobalChatClient from '@/components/dashboard/GlobalChatClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function MessagesPage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  // Gunakan admin client untuk by-pass RLS di server
-  const supabase = createAdminClient()
+  if (isSuspended) {
+    redirect('/suspended')
+  }
 
-  // 1. Get user profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, full_name, role, organization_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || !profile.organization_id) {
-    redirect('/login')
+  if (!orgId) {
+    redirect('/dashboard')
   }
 
   // 2. Fetch Initial Messages
@@ -40,7 +32,7 @@ export default async function MessagesPage() {
       author_id,
       author:profiles!global_messages_author_id_fkey(full_name, role)
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
     .limit(50)
 
@@ -49,7 +41,7 @@ export default async function MessagesPage() {
   const { data: activeProjects } = await supabase
     .from('projects')
     .select('id, title, status')
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .not('status', 'in', '("COMPLETED", "DELIVERED")')
     .order('created_at', { ascending: false })
     .limit(100)

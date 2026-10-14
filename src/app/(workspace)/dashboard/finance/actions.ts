@@ -1,24 +1,17 @@
 'use server'
 
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { revalidatePath } from 'next/cache'
 
 export async function addTransaction(formData: FormData) {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, orgId, isImpersonating, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) return { error: 'Sesi tidak valid.' }
+  if (!orgId) return { error: 'Organisasi tidak ditemukan.' }
 
-  const supabase = createAdminClient()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-    
-  if (!profile?.organization_id) return { error: 'Organisasi tidak ditemukan.' }
-  const orgId = profile.organization_id
+  if (isImpersonating) {
+    return { error: 'Mode Akses Terbatas (Read-Only Guard): Super Admin tidak diizinkan mencatat mutasi finansial kas saat impersonasi.' }
+  }
 
   const type = formData.get('type') as string
   const categoryId = formData.get('category_id') as string
@@ -49,20 +42,14 @@ export async function addTransaction(formData: FormData) {
 }
 
 export async function addCategory(formData: FormData) {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, orgId, isImpersonating, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) return { error: 'Sesi tidak valid.' }
+  if (!orgId) return { error: 'Organisasi tidak ditemukan.' }
 
-  const supabase = createAdminClient()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-    
-  if (!profile?.organization_id) return { error: 'Organisasi tidak ditemukan.' }
-  const orgId = profile.organization_id
+  if (isImpersonating) {
+    return { error: 'Mode Akses Terbatas (Read-Only Guard): Super Admin tidak diizinkan mengubah kategori finansial saat impersonasi.' }
+  }
 
   const name = formData.get('name') as string
   const type = formData.get('type') as string

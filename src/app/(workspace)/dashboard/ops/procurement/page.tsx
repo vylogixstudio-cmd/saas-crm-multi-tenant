@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 import ProcurementClient from './ProcurementClient'
 
 export const metadata = {
@@ -8,22 +8,17 @@ export const metadata = {
 }
 
 export default async function OpsProcurementPage() {
-  const supabase = await createClient()
+  const { user, profile, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
-  // 1. Get authenticated user
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  if (!user) {
     redirect('/login')
   }
 
-  // 2. Ambil profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  if (isSuspended) {
+    redirect('/suspended')
+  }
 
-  if (!profile || !profile.organization_id) {
+  if (!orgId) {
     redirect('/dashboard')
   }
 
@@ -36,7 +31,7 @@ export default async function OpsProcurementPage() {
       id, title, amount, description, status, created_at,
       requested_by:profiles!procurement_requests_requested_by_fkey ( full_name, email )
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
   if (error) {

@@ -1,19 +1,13 @@
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import MaintenanceClient from './MaintenanceClient'
 
 export default async function MaintenancePage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
+
   if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile?.organization_id) redirect('/login')
+  if (isSuspended) redirect('/suspended')
+  if (!orgId) redirect('/dashboard')
 
   // Fetch real tickets
   const { data: tickets } = await supabase
@@ -22,7 +16,7 @@ export default async function MaintenancePage() {
       *,
       profiles:reported_by (full_name)
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
   return <MaintenanceClient initialTickets={tickets || []} />

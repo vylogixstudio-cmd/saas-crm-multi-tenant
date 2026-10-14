@@ -1,25 +1,21 @@
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import ProgressClient from './ProgressClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ProductionProgressPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  // Get org id
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
+  if (isSuspended) {
+    redirect('/suspended')
+  }
 
-  if (!profile?.organization_id) {
+  if (!orgId) {
     redirect('/dashboard')
   }
 
@@ -31,7 +27,7 @@ export default async function ProductionProgressPage() {
       profiles!projects_client_id_fkey(full_name),
       project_physical_details(item_type, quantity)
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .eq('project_category', 'PHYSICAL')
     .not('status', 'eq', 'Selesai (Siap Kirim)')
     .not('status', 'eq', 'Cancelled')

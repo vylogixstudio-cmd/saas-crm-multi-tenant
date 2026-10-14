@@ -1,5 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Users } from 'lucide-react'
@@ -15,40 +14,18 @@ export default async function ClientsPage(props: PageProps) {
   const searchParams = await props.searchParams
   const currentTab = (searchParams?.tab as string) === 'supplier' ? 'supplier' : 'client'
 
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId: currentOrgId, org, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  const supabase = createAdminClient()
-  let currentOrgId: string | null = null
-
-  // Get org id
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single()
-
-  let isPhysical = false
-
-  if (profile?.organization_id) {
-    const { data: org } = await supabase
-      .from('organizations')
-      .select('id, is_active, auto_suspend, license_expires_at, module_digital, module_physical, industry_type')
-      .eq('id', profile.organization_id)
-      .single()
-
-    const isExpired = org?.license_expires_at ? new Date() > new Date(org.license_expires_at) : false
-    if (!org || org.is_active === false || (org.auto_suspend && isExpired)) {
-      redirect('/suspended')
-    }
-    currentOrgId = org.id
-    const isIndustryPhysical = org?.industry_type === 'PHYSICAL' || org?.industry_type === 'MANUFACTURING'
-    isPhysical = org?.module_physical === true || isIndustryPhysical
+  if (isSuspended) {
+    redirect('/suspended')
   }
+
+  const isIndustryPhysical = org?.industry_type === 'PHYSICAL' || org?.industry_type === 'MANUFACTURING'
+  const isPhysical = org?.module_physical === true || isIndustryPhysical
 
   // Jika digital agency dan tab supplier diakses, fallback ke client
   const activeTab = !isPhysical ? 'client' : currentTab

@@ -1,5 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import { Users, UserCircle2, ShieldAlert, CheckCircle2, TrendingUp, Activity } from 'lucide-react'
 import type { Metadata } from 'next'
@@ -38,34 +37,22 @@ function getRoleBadge(role: string) {
 }
 
 export default async function TeamPage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId, org, role, isSuspended, isSuperAdmin, supabaseAdmin } = await getTenantContext()
 
   if (!user) redirect('/login')
-
-  const supabaseAdmin = createAdminClient()
-
-  // Pastikan user adalah admin
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('organization_id, role, organizations(module_physical, industry_type)')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile?.organization_id || profile.role !== 'admin') {
-    redirect('/dashboard') // Hanya admin yang boleh masuk sini
+  if (isSuspended) redirect('/suspended')
+  if (!orgId || (role !== 'admin' && !isSuperAdmin)) {
+    redirect('/dashboard') // Hanya admin atau super admin impersonating yang boleh masuk sini
   }
 
-  // @ts-ignore
-  const isPhysical = profile.organizations?.module_physical === true || profile.organizations?.industry_type === 'PHYSICAL' || profile.organizations?.industry_type === 'MANUFACTURING'
-  // @ts-ignore
-  const isHybrid = isPhysical && profile.organizations?.module_digital !== false
+  const isPhysical = org?.module_physical === true || org?.industry_type === 'PHYSICAL' || org?.industry_type === 'MANUFACTURING'
+  const isHybrid = isPhysical && org?.module_digital !== false
 
   // Fetch all staff members in the same organization
   const { data: staffList } = await supabaseAdmin
     .from('profiles')
     .select('id, full_name, email, role, whatsapp_number, created_at')
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .neq('role', 'client')
     .order('created_at', { ascending: true })
 
@@ -76,7 +63,7 @@ export default async function TeamPage() {
   const { data: logs } = await supabaseAdmin
     .from('audit_logs')
     .select('actor_email, action')
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .gte('created_at', sevenDaysAgo.toISOString())
 
   // Calculate Leaderboard

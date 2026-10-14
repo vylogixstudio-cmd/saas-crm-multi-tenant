@@ -1,30 +1,18 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import CalendarClient from './CalendarClient'
 import { Calendar } from 'lucide-react'
 
 export default async function CalendarPage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, orgId: currentOrgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  const supabase = createAdminClient()
-  let currentOrgId: string | null = null
-
-  // Get org id
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.organization_id) {
-    currentOrgId = profile.organization_id
+  if (isSuspended) {
+    redirect('/suspended')
   }
 
   // Fetch active projects that have deadlines

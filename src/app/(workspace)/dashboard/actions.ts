@@ -25,18 +25,29 @@ export async function getAuthenticatedUser() {
   }
 
   // Ambil organization_id dari profil user yang sedang login
-  // (Admin sudah punya organization_id yang di-set saat registerAgency)
   const { data: profile } = await supabase
     .from('profiles')
     .select('organization_id, role')
     .eq('id', user.id)
     .single()
 
-  if (!profile?.organization_id) {
+  const isSuperAdmin = profile?.role === 'super_admin' || profile?.role === 'superadmin'
+  let effectiveOrgId = profile?.organization_id
+
+  if (isSuperAdmin) {
+    const { cookies } = await import('next/headers')
+    const cookieStore = await cookies()
+    const impersonated = cookieStore.get('vylogix_impersonate_org')?.value
+    if (impersonated) {
+      effectiveOrgId = impersonated
+    }
+  }
+
+  if (!effectiveOrgId) {
     return { user: null, orgId: null, error: 'Akun ini belum terhubung ke organisasi manapun.' }
   }
 
-  return { user, orgId: profile.organization_id, error: null }
+  return { user, orgId: effectiveOrgId, error: null }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

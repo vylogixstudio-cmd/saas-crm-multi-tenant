@@ -1,6 +1,6 @@
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 export const dynamic = 'force-dynamic'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Globe, Server, AlertTriangle } from 'lucide-react'
 import DomainActionButtons from './components/DomainActionButtons'
@@ -10,19 +10,11 @@ export const metadata = {
 }
 
 export default async function InfrastructurePage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, orgId: orgFilter, isSuspended, supabaseAdmin } = await getTenantContext()
   
-  if (!user) return null
-
-  const supabaseAdmin = createAdminClient()
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-
-  const orgFilter = profile?.organization_id
+  if (!user) redirect('/login')
+  if (isSuspended) redirect('/suspended')
+  if (!orgFilter) redirect('/dashboard')
 
   // Fetch projects that are DIGITAL or HYBRID, or have a domain name registered
   const { data: rawProjects } = await supabaseAdmin

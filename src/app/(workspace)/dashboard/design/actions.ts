@@ -2,20 +2,16 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { revalidatePath } from 'next/cache'
 
 // ACTIONS UNTUK PROYEK DESAIN
 
 export async function updateDesignProject(projectId: string, data: { design_file_url: string, design_notes: string, status: string }) {
-  const supabase = await createClient()
+  const { user, orgId, supabaseAdmin } = await getTenantContext()
 
-  // Auth check
-  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
-  const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single()
-  if (!profile?.organization_id) return { error: 'No organization' }
-  
-  const supabaseAdmin = createAdminClient()
+  if (!orgId) return { error: 'No organization' }
 
   // 1. Update project details (both physical and digital, whichever exists)
   await supabaseAdmin
@@ -42,7 +38,7 @@ export async function updateDesignProject(projectId: string, data: { design_file
       updated_at: new Date().toISOString()
     })
     .eq('id', projectId)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
 
   if (err2) return { error: 'Gagal update status: ' + err2.message }
 
@@ -50,7 +46,7 @@ export async function updateDesignProject(projectId: string, data: { design_file
   if (data.design_notes?.trim()) {
     await supabaseAdmin.from('internal_notes').insert({
       project_id: projectId,
-      organization_id: profile.organization_id,
+      organization_id: orgId,
       author_id: user.id,
       content: `[Catatan Desainer] ${data.design_notes.trim()}`,
       visible_to_client: true
@@ -64,7 +60,6 @@ export async function updateDesignProject(projectId: string, data: { design_file
 }
 
 export async function replyToDesignRevision(revisionId: string, reply: string) {
-  const supabase = await createClient()
   const supabaseAdmin = createAdminClient()
   
   const { error } = await supabaseAdmin
@@ -84,13 +79,12 @@ export async function replyToDesignRevision(revisionId: string, reply: string) {
 
 // ACTIONS UNTUK DESIGN ASSETS
 export async function uploadAssetAndSave(formData: FormData) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile, orgId, isSuperAdmin, supabaseAdmin } = await getTenantContext()
   if (!user) return { error: 'Not authenticated' }
-  
-  const { data: profile } = await supabase.from('profiles').select('organization_id, full_name').eq('id', user.id).single()
-  const orgId = profile?.organization_id
   if (!orgId) return { error: 'No organization' }
+
+  const supabase = await createClient()
+  const db = (isSuperAdmin && supabaseAdmin) ? supabaseAdmin : supabase
 
   const name = formData.get('name') as string
   const category = formData.get('category') as string
@@ -111,7 +105,7 @@ export async function uploadAssetAndSave(formData: FormData) {
     const fileExt = file.name.split('.').pop()
     const fileName = `${orgId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
     
-    const { data: uploadData, error: uploadErr } = await supabase.storage
+    const { data: uploadData, error: uploadErr } = await db.storage
       .from('design_assets')
       .upload(fileName, file)
       
@@ -120,19 +114,19 @@ export async function uploadAssetAndSave(formData: FormData) {
     }
 
     // Get public URL
-    const { data: urlData } = supabase.storage.from('design_assets').getPublicUrl(fileName)
+    const { data: urlData } = db.storage.from('design_assets').getPublicUrl(fileName)
     finalUrl = urlData.publicUrl
     sizeMb = file.size / (1024 * 1024)
   }
 
   // Insert to DB
-  const { error } = await supabase.from('design_assets').insert({
+  const { error } = await db.from('design_assets').insert({
     organization_id: orgId,
     name,
     category,
     url: finalUrl,
     uploader_id: user.id,
-    uploader_name: profile.full_name,
+    uploader_name: profile?.full_name || 'Admin',
     size_mb: sizeMb
   })
 
@@ -145,10 +139,12 @@ export async function uploadAssetAndSave(formData: FormData) {
 }
 
 export async function deleteAsset(id: string) {
+  const { isSuperAdmin, supabaseAdmin } = await getTenantContext()
   const supabase = await createClient()
+  const db = (isSuperAdmin && supabaseAdmin) ? supabaseAdmin : supabase
   
   // get asset details first
-  const { data: asset } = await supabase.from('design_assets').select('url').eq('id', id).single()
+  const { data: asset } = await db.from('design_assets').select('url').eq('id', id).single()
   
   // if url points to our storage, we should ideally delete the object too
   // public url format: .../storage/v1/object/public/design_assets/[path]
@@ -157,14 +153,14 @@ export async function deleteAsset(id: string) {
       const parts = asset.url.split('design_assets/')
       if (parts.length > 1) {
         const filePath = parts[1]
-        await supabase.storage.from('design_assets').remove([filePath])
+        await db.storage.from('design_assets').remove([filePath])
       }
     } catch(e) {
       console.error('Failed to delete file from storage', e)
     }
   }
 
-  const { error } = await supabase.from('design_assets').delete().eq('id', id)
+  const { error } = await db.from('design_assets').delete().eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/dashboard/design/assets')
   return { success: true }

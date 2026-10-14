@@ -1,18 +1,13 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import OpnameClient from './OpnameClient'
 
 export default async function OpnamePage() {
-  const supabaseAuth = await createClient()
-  const supabase = createAdminClient()
+  const { user, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
-  const { data: { user } } = await supabaseAuth.auth.getUser()
   if (!user) redirect('/login')
-
-  const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single()
-  const orgId = profile?.organization_id
-  if (!orgId) redirect('/login')
+  if (isSuspended) redirect('/suspended')
+  if (!orgId) redirect('/dashboard')
 
   const { data: items } = await supabase
     .from('inventory_items')

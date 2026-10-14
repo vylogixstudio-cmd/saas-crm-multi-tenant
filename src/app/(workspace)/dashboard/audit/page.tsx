@@ -1,5 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
@@ -139,27 +138,19 @@ function generateLogDetails(log: AuditLogEntry) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function AuditLogPage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId, role, isSuspended, isSuperAdmin, supabaseAdmin } = await getTenantContext()
 
   if (!user) redirect('/login')
+  if (isSuspended) redirect('/suspended')
 
-  const supabaseAdmin = createAdminClient()
-
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile?.organization_id || profile.role === 'client') {
+  if (!orgId || role === 'client') {
     redirect('/dashboard')
   }
 
   const { data: logs, error: logsError } = await supabaseAdmin
     .from('audit_logs')
     .select('id, actor_email, action, target_type, target_name, metadata, created_at')
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
     .limit(100)
 

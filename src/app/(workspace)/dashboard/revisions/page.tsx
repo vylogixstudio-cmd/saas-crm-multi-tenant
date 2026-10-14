@@ -1,5 +1,5 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
+import { redirect } from 'next/navigation'
 import { LifeBuoy } from 'lucide-react'
 import RevisionsTable from './components/RevisionsTable'
 
@@ -8,19 +8,11 @@ export const metadata = {
 }
 
 export default async function RevisionsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, orgId: orgFilter, isSuspended, supabaseAdmin } = await getTenantContext()
   
-  if (!user) return null
-
-  const supabaseAdmin = createAdminClient()
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-
-  const orgFilter = profile?.organization_id
+  if (!user) redirect('/login')
+  if (isSuspended) redirect('/suspended')
+  if (!orgFilter) redirect('/dashboard')
 
   const { data: projects } = await supabaseAdmin
     .from('projects')

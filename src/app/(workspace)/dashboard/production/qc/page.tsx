@@ -1,25 +1,21 @@
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import QcClient from './QcClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function QualityControlPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  // Get org id
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
+  if (isSuspended) {
+    redirect('/suspended')
+  }
 
-  if (!profile?.organization_id) {
+  if (!orgId) {
     redirect('/dashboard')
   }
 
@@ -31,7 +27,7 @@ export default async function QualityControlPage() {
       profiles!projects_client_id_fkey(full_name),
       project_physical_details(item_type, quantity, material_notes, size_notes, color_notes)
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .eq('project_category', 'PHYSICAL')
     .eq('status', 'qc_pending')
     .order('deadline', { ascending: true })

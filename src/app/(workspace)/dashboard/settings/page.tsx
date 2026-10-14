@@ -1,5 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { LayoutDashboard, Settings } from 'lucide-react'
@@ -38,42 +37,21 @@ export const metadata: Metadata = {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function SettingsPage() {
-  // ── Auth Check ──────────────────────────────────────────────────────────────
-  const supabaseAuth = await createClient()
-  const {
-    data: { user },
-  } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId, org, role, isSuspended, isSuperAdmin, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  // ── Data Fetching ───────────────────────────────────────────────────────────
-  // Use admin client so RLS never blocks data retrieval on this server component
-  const supabase = createAdminClient()
+  if (isSuspended) {
+    redirect('/suspended')
+  }
 
-  // 1. Fetch profile via user id
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role === 'client') {
+  if (role === 'client') {
     redirect('/portal')
   }
 
-  if (!profile?.organization_id) {
-    redirect('/dashboard')
-  }
-
-  const { data: org } = await supabase
-    .from('organizations')
-    .select('*')
-    .eq('id', profile.organization_id)
-    .single()
-
-  if (!org) {
+  if (!orgId || !org) {
     redirect('/dashboard')
   }
 
@@ -86,7 +64,7 @@ export default async function SettingsPage() {
 
   const services: AgencyService[] = (servicesRaw as AgencyService[] | null) ?? []
 
-  const isAdmin = profile.role === 'super_admin' || profile.role === 'admin'
+  const isAdmin = role === 'admin' || isSuperAdmin
 
   let serviceAccountEmail = ''
   try {

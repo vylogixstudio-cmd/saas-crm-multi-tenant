@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 import FinanceProcurementClient from './FinanceProcurementClient'
 
 export const metadata = {
@@ -8,26 +8,21 @@ export const metadata = {
 }
 
 export default async function FinanceProcurementPage() {
-  const supabase = await createClient()
+  const { user, profile, orgId, role, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
-  // 1. Get authenticated user
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  if (!user) {
     redirect('/login')
   }
 
-  // 2. Ambil profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  if (isSuspended) {
+    redirect('/suspended')
+  }
 
-  if (!profile || !profile.organization_id) {
+  if (!orgId) {
     redirect('/dashboard')
   }
 
-  const userRole = profile.role
+  const userRole = role || profile?.role
 
   // 3. Ambil data pengajuan belanja
   const { data: requests, error } = await supabase
@@ -37,7 +32,7 @@ export default async function FinanceProcurementPage() {
       requested_by:profiles!procurement_requests_requested_by_fkey ( full_name, email ),
       approved_by:profiles!procurement_requests_approved_by_fkey ( full_name, email )
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
   if (error) {

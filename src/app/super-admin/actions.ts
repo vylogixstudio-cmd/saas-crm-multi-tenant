@@ -485,6 +485,13 @@ export async function impersonateAgency(organizationId: string) {
 
   if (!organizationId) return { error: 'ID Organisasi tidak valid.' }
 
+  const supabase = createAdminClient()
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('id, name')
+    .eq('id', organizationId)
+    .single()
+
   const cookieStore = await cookies()
   cookieStore.set('vylogix_impersonate_org', organizationId, {
     path: '/',
@@ -493,13 +500,52 @@ export async function impersonateAgency(organizationId: string) {
     maxAge: 60 * 60 * 2, // 2 jam
   })
 
+  // 📝 Audit Log: Catat aksi impersonasi Super Admin ke tenant
+  const { data: { user: superAdmin } } = await (await createClient()).auth.getUser()
+  if (superAdmin) {
+    await logAudit({
+      organizationId,
+      actorId: superAdmin.id,
+      actorEmail: superAdmin.email,
+      action: AUDIT_ACTIONS.IMPERSONATE_START,
+      targetType: 'agency',
+      targetId: organizationId,
+      targetName: org?.name || 'Agensi',
+      metadata: {
+        timestamp: new Date().toISOString(),
+        note: 'Super Admin memulai sesi impersonasi tenant'
+      },
+    })
+  }
+
   revalidatePath('/dashboard')
   return { success: true }
 }
 
 export async function stopImpersonation() {
   const cookieStore = await cookies()
+  const previousOrgId = cookieStore.get('vylogix_impersonate_org')?.value
   cookieStore.delete('vylogix_impersonate_org')
+
+  // 📝 Audit Log: Catat sesi impersonasi selesai
+  if (previousOrgId) {
+    const { data: { user: superAdmin } } = await (await createClient()).auth.getUser()
+    if (superAdmin) {
+      await logAudit({
+        organizationId: previousOrgId,
+        actorId: superAdmin.id,
+        actorEmail: superAdmin.email,
+        action: AUDIT_ACTIONS.IMPERSONATE_STOP,
+        targetType: 'agency',
+        targetId: previousOrgId,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          note: 'Super Admin mengakhiri sesi impersonasi tenant'
+        },
+      })
+    }
+  }
+
   revalidatePath('/dashboard')
   revalidatePath('/super-admin')
   return { success: true }

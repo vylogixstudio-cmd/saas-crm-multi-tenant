@@ -1,5 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -9,44 +8,15 @@ import CreateHybridProjectModal from '@/components/CreateHybridProjectModal'
 import ProjectsTable from './components/ProjectsTable'
 
 export default async function ActiveProjectsPage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId: currentOrgId, org: currentOrg, role: userRole, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  const supabase = createAdminClient()
-  let currentOrgId: string | null = null
-
-  // Get org id
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.organization_id) {
-    const { data: org } = await supabase
-      .from('organizations')
-      .select('id, is_active, auto_suspend, license_expires_at, module_digital, module_physical, industry_type')
-      .eq('id', profile.organization_id)
-      .single()
-
-    const isExpired = org?.license_expires_at ? new Date() > new Date(org.license_expires_at) : false
-    if (!org || org.is_active === false || (org.auto_suspend && isExpired)) {
-      redirect('/suspended')
-    }
-    currentOrgId = org.id
+  if (isSuspended) {
+    redirect('/suspended')
   }
-
-  const userRole = profile?.role || 'staff_digital'
-
-  const { data: currentOrg } = await supabase
-    .from('organizations')
-    .select('module_digital, module_physical, industry_type')
-    .eq('id', currentOrgId || '')
-    .single()
 
   const isIndustryPhysical = currentOrg?.industry_type === 'PHYSICAL' || currentOrg?.industry_type === 'MANUFACTURING'
   const isPhysical = currentOrg?.module_physical === true || isIndustryPhysical
@@ -135,7 +105,7 @@ export default async function ActiveProjectsPage() {
             <p className="text-[#4B5563] text-sm mt-1">Daftar semua proyek yang sedang berjalan.</p>
           </div>
 
-          {['super_admin', 'admin', 'staff_cs'].includes(userRole) && (
+          {['super_admin', 'admin', 'staff_cs'].includes(userRole || '') && (
             isHybrid ? (
               <CreateHybridProjectModal 
                 clients={clientsList || []} 
@@ -154,7 +124,7 @@ export default async function ActiveProjectsPage() {
           projects={projects || []} 
           pendingRevisionsCount={pendingRevisionsCount} 
           paidTermins={paidTermins} 
-          userRole={userRole}
+          userRole={userRole || undefined}
         />
       </div>
     </div>

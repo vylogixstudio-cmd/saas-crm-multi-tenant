@@ -1,29 +1,25 @@
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import OpsBillingClient from './OpsBillingClient'
 
 export default async function OpsBillingPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profile, orgId, role, isSuspended, isSuperAdmin, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  // Get user profile and role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, organization_id')
-    .eq('id', user.id)
-    .single()
+  if (isSuspended) {
+    redirect('/suspended')
+  }
 
-  if (!profile || !profile.organization_id) {
+  if (!orgId) {
     redirect('/dashboard')
   }
 
   // Only allow ops, finance, admin, super_admin
   const allowedRoles = ['staff_ops', 'staff_finance', 'admin', 'super_admin']
-  if (!allowedRoles.includes(profile.role)) {
+  if (!isSuperAdmin && !allowedRoles.includes(role || '')) {
     redirect('/dashboard')
   }
 
@@ -34,7 +30,7 @@ export default async function OpsBillingPage() {
       *,
       client:profiles!projects_client_id_fkey(full_name, email)
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
   return (

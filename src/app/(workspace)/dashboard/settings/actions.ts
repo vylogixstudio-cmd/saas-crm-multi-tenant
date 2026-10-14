@@ -6,34 +6,22 @@ import { revalidatePath } from 'next/cache'
 import { updatePasswordSchema } from '@/utils/validations'
 import { getAuthenticatedUser } from '../actions'
 
-// ============================================================
-// CARD 1: Organization Profile & Branding
-// ============================================================
+import { getTenantContext } from '@/utils/tenant'
 
 export async function updateOrganizationSettings(formData: FormData) {
-  const supabaseAuth = await createClient()
-  const {
-    data: { user },
-  } = await supabaseAuth.auth.getUser()
+  const { user, orgId, isImpersonating, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     return { error: 'Sesi tidak valid. Silakan login kembali.' }
   }
 
-  const supabase = createAdminClient()
-
-  // 1. Fetch organization ID from the admin's profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile?.organization_id) {
+  if (!orgId) {
     return { error: 'Organisasi tidak ditemukan. Coba refresh halaman.' }
   }
 
-  const orgId = profile.organization_id
+  if (isImpersonating) {
+    return { error: 'Mode Akses Terbatas (Read-Only Guard): Pengaturan profil, alamat, dan nomor rekening agensi dilindungi dan tidak dapat diubah saat impersonasi.' }
+  }
 
   const name = (formData.get('name') as string | null)?.trim()
   const tagline = (formData.get('tagline') as string | null)?.trim()
@@ -308,20 +296,16 @@ export async function updatePassword(newPassword: string) {
 // ============================================================
 
 export async function updateCustomAssetCategories(categories: string[]) {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, orgId, supabaseAdmin: supabase } = await getTenantContext()
   if (!user) return { error: 'Sesi tidak valid.' }
-
-  const supabase = createAdminClient()
-  const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single()
-  if (!profile?.organization_id) return { error: 'Organisasi tidak ditemukan.' }
+  if (!orgId) return { error: 'Organisasi tidak ditemukan.' }
 
   const cleanCategories = categories.map(c => c.trim()).filter(Boolean)
 
   const { error } = await supabase
     .from('organizations')
     .update({ custom_asset_categories: cleanCategories })
-    .eq('id', profile.organization_id)
+    .eq('id', orgId)
 
   if (error) {
     if (error.message?.includes('custom_asset_categories') || (error as any).code === '42703') {

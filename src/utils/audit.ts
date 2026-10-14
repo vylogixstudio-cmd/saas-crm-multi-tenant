@@ -158,4 +158,8 @@ export const AUDIT_ACTIONS = {
   // Settings
   SETTINGS_UPDATE:       'settings.update',
   PASSWORD_CHANGE:       'auth.password_change',
+
+  // Impersonation
+  IMPERSONATE_START:     'impersonation.start',
+  IMPERSONATE_STOP:      'impersonation.stop',
 } as const

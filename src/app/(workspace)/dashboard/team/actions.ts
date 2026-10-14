@@ -1,7 +1,6 @@
 'use server'
 
-import { createAdminClient } from '@/utils/supabase/admin'
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
 import { revalidatePath } from 'next/cache'
 
 export async function addStaff(formData: FormData) {
@@ -15,23 +14,13 @@ export async function addStaff(formData: FormData) {
     return { error: 'Semua kolom wajib diisi kecuali Nomor WA.' }
   }
 
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId, role: effectiveRole, isSuperAdmin, supabaseAdmin } = await getTenantContext()
 
   if (!user) {
     return { error: 'Unauthorized' }
   }
 
-  const supabaseAdmin = createAdminClient()
-
-  // Ambil org id dari admin saat ini
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile?.organization_id || profile.role !== 'admin') {
+  if (!orgId || (effectiveRole !== 'admin' && !isSuperAdmin)) {
     return { error: 'Hanya Admin Agensi yang dapat mendaftarkan staf.' }
   }
 
@@ -61,7 +50,7 @@ export async function addStaff(formData: FormData) {
   const { error: profileError } = await supabaseAdmin
     .from('profiles')
     .update({ 
-      organization_id: profile.organization_id,
+      organization_id: orgId,
       whatsapp_number: whatsappNumber || null 
     })
     .eq('id', newAuthUser.user.id)

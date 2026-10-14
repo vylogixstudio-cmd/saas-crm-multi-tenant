@@ -2,7 +2,7 @@
 
 import { useTransition } from 'react'
 import { stopImpersonation } from '@/app/super-admin/actions'
-import { Crown, ArrowLeft, Loader2 } from 'lucide-react'
+import { Crown, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react'
 
 export default function ImpersonationBanner({ orgName }: { orgName: string }) {
   const [isPending, startTransition] = useTransition()
@@ -20,12 +20,15 @@ export default function ImpersonationBanner({ orgName }: { orgName: string }) {
         <div className="p-1.5 bg-black/20 rounded-lg text-amber-200 shrink-0">
           <Crown size={16} />
         </div>
-        <div className="text-xs truncate">
-          <span className="font-extrabold uppercase tracking-wider bg-amber-400 text-amber-950 px-2 py-0.5 rounded text-[10px] mr-2">
+        <div className="text-xs truncate flex items-center gap-2">
+          <span className="font-extrabold uppercase tracking-wider bg-amber-400 text-amber-950 px-2 py-0.5 rounded text-[10px] shrink-0">
             Mode Impersonasi
           </span>
-          <span className="font-medium text-white/90">
-            Anda sedang menginspeksi dasbor agensi: <strong className="text-white font-extrabold">{orgName}</strong>
+          <span className="font-medium text-white/90 truncate">
+            Inspeksi dasbor agensi: <strong className="text-white font-extrabold">{orgName}</strong>
+          </span>
+          <span className="hidden lg:inline-flex items-center gap-1 bg-black/30 text-amber-200 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-amber-300/30 shrink-0">
+            <ShieldCheck size={12} className="text-emerald-300" /> Read-Only Guard Aktif
           </span>
         </div>
       </div>

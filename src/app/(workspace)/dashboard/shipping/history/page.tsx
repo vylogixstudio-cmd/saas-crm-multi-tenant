@@ -1,21 +1,13 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import HistoryClient from './HistoryClient'
 
 export default async function ShippingHistoryPage() {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
-  if (!user) redirect('/login')
+  const { user, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
-  const supabase = createAdminClient()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single()
-    
-  if (!profile?.organization_id) redirect('/login')
+  if (!user) redirect('/login')
+  if (isSuspended) redirect('/suspended')
+  if (!orgId) redirect('/dashboard')
 
   // Fetch projects where shipping is completed (DELIVERED)
   const { data: projects } = await supabase
@@ -25,7 +17,7 @@ export default async function ShippingHistoryPage() {
       profiles:client_id (full_name, whatsapp_number, email),
       project_physical_details (*)
     `)
-    .eq('organization_id', profile.organization_id)
+    .eq('organization_id', orgId)
     .eq('project_category', 'PHYSICAL')
     .order('updated_at', { ascending: false })
 

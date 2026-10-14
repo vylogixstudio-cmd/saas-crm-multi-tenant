@@ -1,5 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
-import { createAdminClient } from '@/utils/supabase/admin'
+import { getTenantContext } from '@/utils/tenant'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, User, Phone, Mail, Calendar, Briefcase, MapPin, Package } from 'lucide-react'
@@ -7,31 +6,19 @@ import ClientSettings from './ClientSettings'
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
+  const { user, profile, orgId: currentOrgId, role: userRole, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
   if (!user) {
     redirect('/login')
   }
 
-  const supabase = createAdminClient()
-  let currentOrgId: string | null = null
-
-  // Get org id and role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id, role')
-    .eq('id', user.id)
-    .single()
-    
-  if (profile?.organization_id) {
-    currentOrgId = profile.organization_id
+  if (isSuspended) {
+    redirect('/suspended')
   }
 
   if (!currentOrgId) redirect('/dashboard')
 
-  const userRole = profile?.role || 'staff_digital'
-  const isExecutor = ['staff_executor', 'staff_digital'].includes(userRole)
+  const isExecutor = ['staff_executor', 'staff_digital'].includes(userRole || '')
 
   // Fetch client details
   const { data: client, error } = await supabase

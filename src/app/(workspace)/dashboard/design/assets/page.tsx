@@ -1,14 +1,12 @@
-import { createClient } from '@/utils/supabase/server'
+import { getTenantContext } from '@/utils/tenant'
+import { redirect } from 'next/navigation'
 import AssetsClient from './AssetsClient'
 
 export default async function DesignAssetsPage() {
-  const supabase = await createClient()
+  const { user, orgId, isSuspended, supabaseAdmin: supabase } = await getTenantContext()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single()
-  const orgId = profile?.organization_id
+  if (!user) redirect('/login')
+  if (isSuspended) redirect('/suspended')
   if (!orgId) return <div>No Organization Found</div>
 
   const { data: assets } = await supabase

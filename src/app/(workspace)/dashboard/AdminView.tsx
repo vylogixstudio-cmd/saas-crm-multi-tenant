@@ -306,7 +306,6 @@ export default async function AdminView() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {isImpersonating && <ImpersonationBanner orgName={orgName} />}
       {latestBroadcast && (
         <div className="pt-4 px-4 sm:px-8 max-w-7xl mx-auto w-full">
           <GlobalBroadcastBanner broadcast={latestBroadcast} />
