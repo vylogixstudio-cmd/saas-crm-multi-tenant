@@ -3,9 +3,10 @@ import { createAdminClient } from '@/utils/supabase/admin';
 import { clearAndWrite } from '@/lib/googleSheets';
 
 export async function POST(request: Request) {
-  // Simple auth check via Bearer token (you should set this in Supabase Webhook headers)
+  // Simple auth check via Bearer token (matches CRON_SECRET if provided)
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== 'Bearer YOUR_SECRET_TOKEN') {
+  const cronSecret = process.env.CRON_SECRET;
+  if (authHeader && cronSecret && authHeader !== `Bearer ${cronSecret}` && authHeader !== 'Bearer YOUR_SECRET_TOKEN') {
     return NextResponse.json({ error: 'Unauthorized webhook' }, { status: 401 });
   }
 
