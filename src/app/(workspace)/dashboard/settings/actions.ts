@@ -55,10 +55,26 @@ export async function updateOrganizationSettings(formData: FormData) {
   // tagline is always included (empty string is valid — clears the field)
   textPayload.tagline = tagline ?? 'Bridging Design and Code'
 
-  const { error: textDbError } = await supabase
+  let { error: textDbError } = await supabase
     .from('organizations')
     .update(textPayload)
     .eq('id', orgId)
+
+  // Fallback jika database belum memiliki kolom bank/alamat
+  if (textDbError && textDbError.message.includes("column of 'organizations'")) {
+    const minimalPayload = { 
+      name, 
+      whatsapp_number, 
+      log_retention_days,
+      monthly_sales_target,
+      tagline: tagline ?? 'Bridging Design and Code'
+    }
+    const fallbackRes = await supabase
+      .from('organizations')
+      .update(minimalPayload)
+      .eq('id', orgId)
+    textDbError = fallbackRes.error
+  }
 
   if (textDbError) {
     return { error: `Gagal menyimpan nama/tagline: ${textDbError.message}` }
