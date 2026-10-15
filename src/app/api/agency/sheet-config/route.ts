@@ -1,31 +1,23 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
+import { getTenantContext } from '@/utils/tenant';
 import { validateSheetAccess } from '@/lib/googleSheets';
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, orgId, supabaseAdmin } = await getTenantContext();
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Get current user's organization
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile?.organization_id) {
+  if (!orgId) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
 
-  // Fetch configs
-  const { data: configs, error } = await supabase
+  // Fetch configs using admin client to prevent RLS false-positive
+  const { data: configs, error } = await supabaseAdmin
     .from('agency_sheet_configs')
     .select('*')
-    .eq('agency_id', profile.organization_id);
+    .eq('agency_id', orgId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -35,29 +27,20 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, orgId, role, isSuperAdmin, supabaseAdmin } = await getTenantContext();
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Ensure user has permission
-  const { data: hasPerm } = await supabase
-    .rpc('has_permission', { p_user_id: user.id, p_permission: 'sheets.configure' });
-    
-  if (!hasPerm) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!orgId) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile?.organization_id) {
-    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+  // Hanya admin agensi atau super admin yang boleh mengatur sheet
+  const allowedRoles = ['admin', 'super_admin', 'superadmin'];
+  if (!isSuperAdmin && (!role || !allowedRoles.includes(role))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const body = await request.json();
@@ -76,11 +59,11 @@ export async function POST(request: Request) {
     );
   }
 
-  // Upsert the config
-  const { data, error } = await supabase
+  // Upsert the config using supabaseAdmin (bypasses RLS safely on the server)
+  const { data, error } = await supabaseAdmin
     .from('agency_sheet_configs')
     .upsert({
-      agency_id: profile.organization_id,
+      agency_id: orgId,
       sheet_role,
       sheet_id,
       tab_projects: tab_projects || 'Projects',
