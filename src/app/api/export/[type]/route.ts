@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { getTenantContext } from '@/utils/tenant';
 import { clearAndWrite } from '@/lib/googleSheets';
 
 export async function POST(request: Request, { params }: { params: Promise<{ type: string }> }) {
@@ -15,33 +14,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ typ
     return NextResponse.json({ error: 'Invalid export type' }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, orgId, supabaseAdmin: supabase } = await getTenantContext();
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Ensure user has export permission
-  const { data: hasPerm } = await supabase
-    .rpc('has_permission', { p_user_id: user.id, p_permission: 'sheets.export' });
-    
-  if (!hasPerm) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile?.organization_id) {
+  if (!orgId) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
-
-  // Strict tenant isolation: orgId is locked to the authenticated user's organization
-  const orgId = profile.organization_id;
 
   // Check agency type modules
   const { data: org } = await supabase
@@ -57,7 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ typ
     .eq('agency_id', orgId);
 
   if (configError || !configs || configs.length === 0) {
-    return NextResponse.json({ error: 'No Google Sheets configured for this agency.' }, { status: 400 });
+    return NextResponse.json({ error: 'Google Sheet belum terpasang untuk agensi ini. Silakan simpan Google Sheet ID terlebih dahulu pada form di atas.' }, { status: 400 });
   }
 
   try {
