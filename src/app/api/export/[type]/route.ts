@@ -133,12 +133,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ typ
         .select('client_id, status, total_price')
         .eq('organization_id', orgId);
 
-      const adminSupabase = createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      );
-
-      const { data: logs } = await adminSupabase
+      const { data: logs } = await supabase
         .from('audit_logs')
         .select('actor_id, action')
         .eq('organization_id', orgId);
