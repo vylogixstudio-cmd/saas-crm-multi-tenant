@@ -32,36 +32,50 @@ export default function CreateHybridProjectModal({
   const [errorMsg, setErrorMsg] = useState('')
 
   async function handleDigitalSubmit(formData: FormData) {
+    if (loading) return
     setLoading(true)
     setErrorMsg('')
     
-    const res = await createClientProject(formData)
-    
-    if (res?.error) {
-      setErrorMsg(res.error)
-      toast.error(res.error)
-      setLoading(false)
-    } else {
-      toast.success('Proyek Digital baru berhasil dibuat!')
-      setIsOpen(false)
+    try {
+      const res = await createClientProject(formData)
+      
+      if (res?.error) {
+        setErrorMsg(res.error)
+        toast.error(res.error)
+      } else {
+        toast.success('Proyek Digital baru berhasil dibuat!')
+        setIsOpen(false)
+      }
+    } catch (err: any) {
+      const msg = err?.message || 'Terjadi kesalahan saat membuat proyek digital'
+      setErrorMsg(msg)
+      toast.error(msg)
+    } finally {
       setLoading(false)
     }
   }
 
   async function handlePhysicalSubmit(formData: FormData) {
+    if (loading) return
     setLoading(true)
     setErrorMsg('')
 
-    const res = await createPhysicalOrder(formData)
+    try {
+      const res = await createPhysicalOrder(formData)
 
-    if (res && !res.success) {
-      const err = res.error || 'Gagal membuat pesanan fisik'
-      setErrorMsg(err)
-      toast.error(err)
-      setLoading(false)
-    } else {
-      toast.success('Pesanan Fisik baru berhasil dibuat & masuk antrean!')
-      setIsOpen(false)
+      if (res && !res.success) {
+        const err = res.error || 'Gagal membuat pesanan fisik'
+        setErrorMsg(err)
+        toast.error(err)
+      } else {
+        toast.success('Pesanan Fisik baru berhasil dibuat & masuk antrean!')
+        setIsOpen(false)
+      }
+    } catch (err: any) {
+      const msg = err?.message || 'Terjadi kesalahan saat membuat pesanan fisik'
+      setErrorMsg(msg)
+      toast.error(msg)
+    } finally {
       setLoading(false)
     }
   }
@@ -138,7 +152,7 @@ export default function CreateHybridProjectModal({
 
             {/* FORM 1: DIGITAL PROJECT */}
             {orderType === 'DIGITAL' && (
-              <form action={handleDigitalSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              <form action={handleDigitalSubmit} onSubmit={(e) => { if (loading) { e.preventDefault(); e.stopPropagation(); } }} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-[#4B5563] mb-1.5">Pilih Klien *</label>
                   <select name="clientId" required className="w-full px-4 py-3 rounded-[12px] bg-[#F8F9FA] border border-black/10 text-sm focus:outline-none focus:border-[#2563EB] transition-colors font-medium">
@@ -193,9 +207,14 @@ export default function CreateHybridProjectModal({
                   <button 
                     disabled={loading} 
                     type="submit" 
-                    className="w-full bg-[#2563EB] text-white font-bold py-3.5 rounded-[12px] hover:bg-[#1D4ED8] transition-all shadow-md disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+                    className="w-full bg-[#2563EB] text-white font-bold py-3.5 rounded-[12px] hover:bg-[#1D4ED8] transition-all shadow-md disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
                   >
-                    {loading ? 'Menyimpan Proyek...' : 'Simpan Proyek Digital'}
+                    {loading ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Menyimpan Proyek Digital...</span>
+                      </>
+                    ) : 'Simpan Proyek Digital'}
                   </button>
                 </div>
               </form>
@@ -203,7 +222,7 @@ export default function CreateHybridProjectModal({
 
             {/* FORM 2: PHYSICAL ORDER */}
             {orderType === 'PHYSICAL' && (
-              <form action={handlePhysicalSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              <form action={handlePhysicalSubmit} onSubmit={(e) => { if (loading) { e.preventDefault(); e.stopPropagation(); } }} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-[#4B5563] mb-1.5">Pilih Klien *</label>
                   <select name="client_id" required className="w-full px-4 py-3 rounded-[12px] bg-[#F8F9FA] border border-black/10 text-sm focus:outline-none focus:border-orange-500 transition-colors font-medium">
@@ -310,9 +329,14 @@ export default function CreateHybridProjectModal({
                   <button 
                     disabled={loading} 
                     type="submit" 
-                    className="w-full bg-gradient-to-r from-orange-500 to-amber-600 text-white font-bold py-3.5 rounded-[12px] hover:opacity-95 transition-all shadow-md disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+                    className="w-full bg-gradient-to-r from-orange-500 to-amber-600 text-white font-bold py-3.5 rounded-[12px] hover:opacity-95 transition-all shadow-md disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
                   >
-                    {loading ? 'Menyimpan Pesanan...' : 'Simpan Pesanan Fisik'}
+                    {loading ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Menyimpan Pesanan Fisik...</span>
+                      </>
+                    ) : 'Simpan Pesanan Fisik'}
                   </button>
                 </div>
               </form>

@@ -19,6 +19,7 @@ export default function CreateClientModal({ defaultRole = 'client', onSuccess }:
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    if (loading) return
     setLoading(true)
     setErrorMsg('')
     

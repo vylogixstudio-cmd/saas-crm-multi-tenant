@@ -22,60 +22,77 @@ export default function ConfirmationClient({ initialProjects }: { initialProject
   )
 
   const handleConfirm = async (projectId: string) => {
+    if (isUpdating) return
     if (!confirm('Tandai pesanan ini telah diterima dengan baik oleh klien dan selesaikan proyek?')) return
     setIsUpdating(projectId)
     
-    const res = await confirmDelivery(projectId)
-    
-    if (res.success) {
-      toast.success('Pesanan telah diselesaikan!')
-      setProjects(projects.filter(p => p.id !== projectId))
-    } else {
-      toast.error(res.error || 'Terjadi kesalahan.')
+    try {
+      const res = await confirmDelivery(projectId)
+      
+      if (res.success) {
+        toast.success('Pesanan telah diselesaikan!')
+        setProjects(prev => prev.filter(p => p.id !== projectId))
+      } else {
+        toast.error(res.error || 'Terjadi kesalahan.')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menyelesaikan pesanan.')
+    } finally {
+      setIsUpdating(null)
     }
-    setIsUpdating(null)
   }
 
   const handleCancelAndRefund = async (projectId: string) => {
+    if (isUpdating) return
     const reason = prompt('Masukkan alasan pembatalan / refund pesanan:')
     if (reason === null) return
     setIsUpdating(projectId)
 
-    const res = await cancelAndRefundOrder(projectId, reason || 'Permintaan Refund Klien')
-    if (res.success) {
-      toast.success('Pesanan berhasil dibatalkan dan dimasukkan ke riwayat refund.')
-      setProjects(projects.filter(p => p.id !== projectId))
-    } else {
-      toast.error(res.error || 'Gagal membatalkan pesanan.')
+    try {
+      const res = await cancelAndRefundOrder(projectId, reason || 'Permintaan Refund Klien')
+      if (res.success) {
+        toast.success('Pesanan berhasil dibatalkan dan dimasukkan ke riwayat refund.')
+        setProjects(prev => prev.filter(p => p.id !== projectId))
+      } else {
+        toast.error(res.error || 'Gagal membatalkan pesanan.')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal membatalkan pesanan.')
+    } finally {
+      setIsUpdating(null)
     }
-    setIsUpdating(null)
   }
 
   const handleReshipSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!reshipModalProject) return
+    if (isUpdating || !reshipModalProject) return
     setIsUpdating(reshipModalProject.id)
 
-    const fd = new FormData()
-    fd.append('shipping_courier', newCourier)
-    fd.append('tracking_number', newTracking)
-    fd.append('reship_notes', reshipNotes)
+    try {
+      const fd = new FormData()
+      fd.append('shipping_courier', newCourier)
+      fd.append('tracking_number', newTracking)
+      fd.append('reship_notes', reshipNotes)
 
-    const res = await reshipReturnOrder(reshipModalProject.id, fd)
-    if (res.success) {
-      toast.success('Resi pengganti retur berhasil dikirim ke klien!')
-      setProjects(prev => prev.map(p => p.id === reshipModalProject.id ? {
-        ...p,
-        status: 'shipped',
-        project_physical_details: Array.isArray(p.project_physical_details)
-          ? [{ ...p.project_physical_details[0], shipping_status: 'SHIPPED', shipping_courier: newCourier, tracking_number: newTracking }]
-          : { ...p.project_physical_details, shipping_status: 'SHIPPED', shipping_courier: newCourier, tracking_number: newTracking }
-      } : p))
-      setReshipModalProject(null)
-    } else {
-      toast.error(res.error || 'Gagal menyimpan resi baru.')
+      const res = await reshipReturnOrder(reshipModalProject.id, fd)
+      if (res.success) {
+        toast.success('Resi pengganti retur berhasil dikirim ke klien!')
+        setProjects(prev => prev.map(p => p.id === reshipModalProject.id ? {
+          ...p,
+          status: 'shipped',
+          project_physical_details: Array.isArray(p.project_physical_details)
+            ? [{ ...p.project_physical_details[0], shipping_status: 'SHIPPED', shipping_courier: newCourier, tracking_number: newTracking }]
+            : { ...p.project_physical_details, shipping_status: 'SHIPPED', shipping_courier: newCourier, tracking_number: newTracking }
+        } : p))
+        setReshipModalProject(null)
+      } else {
+        toast.error(res.error || 'Gagal menyimpan resi baru.')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menyimpan resi baru.')
+    } finally {
+      setIsUpdating(null)
     }
-    setIsUpdating(null)
   }
 
   // Helper render parsed complaint note

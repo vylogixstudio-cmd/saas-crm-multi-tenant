@@ -163,7 +163,7 @@ INSERT INTO role_permissions (role_slug, permission_slug) VALUES
     ('staff_design', 'design.read'), ('staff_design', 'design.manage'), ('staff_design', 'projects.read'),
     ('staff_production', 'production.read'), ('staff_production', 'production.manage'),
     ('staff_warehouse', 'warehouse.read'), ('staff_warehouse', 'warehouse.manage'),
-    ('staff_shipping', 'packing.read'), ('staff_shipping', 'packing.manage'), ('staff_shipping', 'shipping.read'), ('staff_shipping', 'shipping.manage');
+    ('staff_shipping', 'projects.read'), ('staff_shipping', 'projects.manage'), ('staff_shipping', 'packing.read'), ('staff_shipping', 'packing.manage'), ('staff_shipping', 'shipping.read'), ('staff_shipping', 'shipping.manage');
 
 
 -- ============================================================

@@ -25,16 +25,21 @@ export default function CreateProjectModal({ clients, services = [] }: { clients
   const [errorMsg, setErrorMsg] = useState('')
 
   async function handleSubmit(formData: FormData) {
+    if (loading) return
     setLoading(true)
     setErrorMsg('')
     
-    const res = await createClientProject(formData)
-    
-    if (res?.error) {
-      setErrorMsg(res.error)
-      setLoading(false)
-    } else {
-      setIsOpen(false)
+    try {
+      const res = await createClientProject(formData)
+      
+      if (res?.error) {
+        setErrorMsg(res.error)
+      } else {
+        setIsOpen(false)
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Terjadi kesalahan sistem.')
+    } finally {
       setLoading(false)
     }
   }
@@ -58,7 +63,7 @@ export default function CreateProjectModal({ clients, services = [] }: { clients
               </button>
             </div>
             
-            <form action={handleSubmit} className="p-6 space-y-4">
+            <form action={handleSubmit} onSubmit={(e) => { if (loading) { e.preventDefault(); e.stopPropagation(); } }} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-[#4B5563] mb-1.5">Pilih Klien</label>
                 <select name="clientId" required className="w-full px-4 py-3 rounded-[12px] bg-[#F8F9FA] border border-black/10 text-sm focus:outline-none focus:border-[#2563EB] transition-colors">
@@ -104,8 +109,13 @@ export default function CreateProjectModal({ clients, services = [] }: { clients
               )}
 
               <div className="pt-2">
-                <button disabled={loading} type="submit" className="w-full bg-[#2563EB] text-white font-bold py-3.5 rounded-[12px] hover:bg-[#1D4ED8] transition-all shadow-md disabled:opacity-50">
-                  {loading ? 'Menyimpan...' : 'Simpan Proyek'}
+                <button disabled={loading} type="submit" className="w-full bg-[#2563EB] text-white font-bold py-3.5 rounded-[12px] hover:bg-[#1D4ED8] transition-all shadow-md disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  {loading ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Menyimpan Proyek...</span>
+                    </>
+                  ) : 'Simpan Proyek'}
                 </button>
               </div>
             </form>

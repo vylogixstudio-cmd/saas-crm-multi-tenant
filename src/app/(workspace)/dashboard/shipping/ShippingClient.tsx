@@ -17,18 +17,24 @@ export default function ShippingClient({ initialProjects }: { initialProjects: a
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>, projectId: string) => {
     e.preventDefault()
+    if (isUpdating) return
     setIsUpdating(projectId)
     
-    const formData = new FormData(e.currentTarget)
-    const res = await processShipping(projectId, formData)
-    
-    if (res.success) {
-      toast.success('Informasi pengiriman berhasil disimpan!')
-      setProjects(projects.filter(p => p.id !== projectId))
-    } else {
-      toast.error(res.error || 'Terjadi kesalahan.')
+    try {
+      const formData = new FormData(e.currentTarget)
+      const res = await processShipping(projectId, formData)
+      
+      if (res.success) {
+        toast.success('Informasi pengiriman berhasil disimpan!')
+        setProjects(prev => prev.filter(p => p.id !== projectId))
+      } else {
+        toast.error(res.error || 'Terjadi kesalahan.')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal memproses pengiriman.')
+    } finally {
+      setIsUpdating(null)
     }
-    setIsUpdating(null)
   }
 
   return (
@@ -123,9 +129,19 @@ export default function ShippingClient({ initialProjects }: { initialProjects: a
                   <button 
                     type="submit"
                     disabled={isUpdating === project.id}
-                    className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 transition-colors shadow-sm disabled:opacity-50"
+                    className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 transition-colors shadow-sm disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed"
                   >
-                    <Send size={16} /> Proses Pengiriman
+                    {isUpdating === project.id ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Memproses Pengiriman...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send size={16} />
+                        <span>Proses Pengiriman</span>
+                      </>
+                    )}
                   </button>
                 </form>
               </div>

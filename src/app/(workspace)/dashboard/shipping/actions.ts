@@ -1,13 +1,13 @@
 'use server'
 
-import { createClient } from '@/utils/supabase/server'
 import { getTenantContext } from '@/utils/tenant'
 import { revalidatePath } from 'next/cache'
 
 export async function processShipping(projectId: string, formData: FormData) {
-  const supabase = await createClient()
-  const { user, orgId, isSuperAdmin, supabaseAdmin } = await getTenantContext()
-  const db = (isSuperAdmin && supabaseAdmin) ? supabaseAdmin : supabase
+  const { user, orgId, supabaseAdmin } = await getTenantContext()
+  
+  if (!user) return { error: 'Not authenticated' }
+  if (!orgId) return { error: 'No organization' }
   
   const courier = formData.get('shipping_courier') as string
   const trackingNumber = formData.get('tracking_number') as string
@@ -16,7 +16,7 @@ export async function processShipping(projectId: string, formData: FormData) {
   const actualCourier = deliveryType === 'pickup' ? 'Diambil Klien' : courier
 
   // 1. Update project status to 'shipped' and progress to 95%
-  const { error: projError } = await db
+  const { error: projError } = await supabaseAdmin
     .from('projects')
     .update({ 
       status: 'shipped',
@@ -24,11 +24,12 @@ export async function processShipping(projectId: string, formData: FormData) {
       updated_at: new Date().toISOString()
     })
     .eq('id', projectId)
+    .eq('organization_id', orgId)
 
   if (projError) return { error: 'Gagal update status proyek: ' + projError.message }
 
   // 2. Update physical detail (set shipping_status to SHIPPED)
-  const { error } = await db
+  const { error } = await supabaseAdmin
     .from('project_physical_details')
     .update({ 
       shipping_status: 'SHIPPED',
@@ -41,19 +42,17 @@ export async function processShipping(projectId: string, formData: FormData) {
   if (error) return { error: error.message }
 
   // 3. Add internal note
-  if (user) {
-    let noteContent = `[SISTEM] Pesanan dalam perjalanan.`
-    if (deliveryType === 'pickup') noteContent = `[SISTEM] Pesanan siap dan menunggu diambil oleh klien.`
-    else if (actualCourier) noteContent = `[SISTEM] Dikirim via ${actualCourier} (Resi: ${trackingNumber || '-'})`
+  let noteContent = `[SISTEM] Pesanan dalam perjalanan.`
+  if (deliveryType === 'pickup') noteContent = `[SISTEM] Pesanan siap dan menunggu diambil oleh klien.`
+  else if (actualCourier) noteContent = `[SISTEM] Dikirim via ${actualCourier} (Resi: ${trackingNumber || '-'})`
 
-    await db.from('internal_notes').insert({
-      project_id: projectId,
-      organization_id: orgId,
-      author_id: user.id,
-      content: noteContent,
-      visible_to_client: true
-    })
-  }
+  await supabaseAdmin.from('internal_notes').insert({
+    project_id: projectId,
+    organization_id: orgId,
+    author_id: user.id,
+    content: noteContent,
+    visible_to_client: true
+  })
 
   revalidatePath('/dashboard/shipping')
   revalidatePath('/dashboard/shipping/confirmation')
@@ -65,12 +64,13 @@ export async function processShipping(projectId: string, formData: FormData) {
 }
 
 export async function confirmDelivery(projectId: string) {
-  const supabase = await createClient()
-  const { user, orgId, isSuperAdmin, supabaseAdmin } = await getTenantContext()
-  const db = (isSuperAdmin && supabaseAdmin) ? supabaseAdmin : supabase
+  const { user, orgId, supabaseAdmin } = await getTenantContext()
+
+  if (!user) return { error: 'Not authenticated' }
+  if (!orgId) return { error: 'No organization' }
 
   // Update project status to completed
-  const { error: projectError } = await db
+  const { error: projectError } = await supabaseAdmin
     .from('projects')
     .update({ 
       status: 'completed',
@@ -78,11 +78,12 @@ export async function confirmDelivery(projectId: string) {
       updated_at: new Date().toISOString()
     })
     .eq('id', projectId)
+    .eq('organization_id', orgId)
 
   if (projectError) return { error: projectError.message }
 
   // Update physical detail (set shipping_status to DELIVERED)
-  const { error: detailError } = await db
+  const { error: detailError } = await supabaseAdmin
     .from('project_physical_details')
     .update({ 
       shipping_status: 'DELIVERED',
@@ -93,19 +94,18 @@ export async function confirmDelivery(projectId: string) {
   if (detailError) return { error: detailError.message }
 
   // Add internal note
-  if (user) {
-    await db.from('internal_notes').insert({
-      project_id: projectId,
-      organization_id: orgId,
-      author_id: user.id,
-      content: '[SISTEM] Pesanan telah DITERIMA oleh klien. Proyek SELESAI.',
-      visible_to_client: true
-    })
-  }
+  await supabaseAdmin.from('internal_notes').insert({
+    project_id: projectId,
+    organization_id: orgId,
+    author_id: user.id,
+    content: '[SISTEM] Pesanan telah DITERIMA oleh klien. Proyek SELESAI.',
+    visible_to_client: true
+  })
 
   revalidatePath('/dashboard/shipping/confirmation')
   revalidatePath('/dashboard/shipping/history')
   revalidatePath('/dashboard/projects')
+  revalidatePath('/dashboard/projects/completed')
   revalidatePath(`/portal/project/${projectId}`)
   revalidatePath('/portal')
   return { success: true }
@@ -115,9 +115,10 @@ export async function confirmDelivery(projectId: string) {
 // reshipReturnOrder — Staf setujui retur dan input resi baru untuk pengiriman ulang
 // ─────────────────────────────────────────────────────────────────────────────
 export async function reshipReturnOrder(projectId: string, formData: FormData) {
-  const supabase = await createClient()
-  const { user, orgId, isSuperAdmin, supabaseAdmin } = await getTenantContext()
-  const db = (isSuperAdmin && supabaseAdmin) ? supabaseAdmin : supabase
+  const { user, orgId, supabaseAdmin } = await getTenantContext()
+
+  if (!user) return { error: 'Not authenticated' }
+  if (!orgId) return { error: 'No organization' }
 
   const courier = formData.get('shipping_courier') as string
   const trackingNumber = formData.get('tracking_number') as string
@@ -126,7 +127,7 @@ export async function reshipReturnOrder(projectId: string, formData: FormData) {
   if (!courier?.trim()) return { error: 'Nama kurir / ekspedisi wajib diisi.' }
 
   // 1. Update project status back to shipped
-  const { error: projError } = await db
+  const { error: projError } = await supabaseAdmin
     .from('projects')
     .update({
       status: 'shipped',
@@ -134,11 +135,12 @@ export async function reshipReturnOrder(projectId: string, formData: FormData) {
       updated_at: new Date().toISOString()
     })
     .eq('id', projectId)
+    .eq('organization_id', orgId)
 
   if (projError) return { error: projError.message }
 
   // 2. Update physical details with new courier and tracking number
-  const { error: detailError } = await db
+  const { error: detailError } = await supabaseAdmin
     .from('project_physical_details')
     .update({
       shipping_status: 'SHIPPED',
@@ -151,16 +153,14 @@ export async function reshipReturnOrder(projectId: string, formData: FormData) {
   if (detailError) return { error: detailError.message }
 
   // 3. Add internal note
-  if (user) {
-    const content = `[PENGIRIMAN ULANG RETUR] Retur disetujui. Barang pengganti telah dikirim via ${courier} (Resi Baru: ${trackingNumber || '-'}). ${notes ? `Catatan: ${notes}` : ''}`
-    await db.from('internal_notes').insert({
-      project_id: projectId,
-      organization_id: orgId,
-      author_id: user.id,
-      content,
-      visible_to_client: true
-    })
-  }
+  const content = `[PENGIRIMAN ULANG RETUR] Retur disetujui. Barang pengganti telah dikirim via ${courier} (Resi Baru: ${trackingNumber || '-'}). ${notes ? `Catatan: ${notes}` : ''}`
+  await supabaseAdmin.from('internal_notes').insert({
+    project_id: projectId,
+    organization_id: orgId,
+    author_id: user.id,
+    content,
+    visible_to_client: true
+  })
 
   revalidatePath('/dashboard/shipping/confirmation')
   revalidatePath('/dashboard/shipping/history')
@@ -174,23 +174,25 @@ export async function reshipReturnOrder(projectId: string, formData: FormData) {
 // cancelAndRefundOrder — Batalkan pesanan karena komplain / refund
 // ─────────────────────────────────────────────────────────────────────────────
 export async function cancelAndRefundOrder(projectId: string, reason: string) {
-  const supabase = await createClient()
-  const { user, orgId, isSuperAdmin, supabaseAdmin } = await getTenantContext()
-  const db = (isSuperAdmin && supabaseAdmin) ? supabaseAdmin : supabase
+  const { user, orgId, supabaseAdmin } = await getTenantContext()
+
+  if (!user) return { error: 'Not authenticated' }
+  if (!orgId) return { error: 'No organization' }
 
   // 1. Update project status to cancelled
-  const { error: projError } = await db
+  const { error: projError } = await supabaseAdmin
     .from('projects')
     .update({
       status: 'cancelled',
       updated_at: new Date().toISOString()
     })
     .eq('id', projectId)
+    .eq('organization_id', orgId)
 
   if (projError) return { error: projError.message }
 
   // 2. Update physical detail
-  await db
+  await supabaseAdmin
     .from('project_physical_details')
     .update({
       shipping_status: 'CANCELLED',
@@ -199,15 +201,13 @@ export async function cancelAndRefundOrder(projectId: string, reason: string) {
     .eq('project_id', projectId)
 
   // 3. Add internal note
-  if (user) {
-    await db.from('internal_notes').insert({
-      project_id: projectId,
-      organization_id: orgId,
-      author_id: user.id,
-      content: `[PESANAN DIBATALKAN / REFUND] Pesanan dibatalkan atas kesepakatan komplain & pengembalian dana. Alasan: ${reason || 'Komplain Klien'}`,
-      visible_to_client: true
-    })
-  }
+  await supabaseAdmin.from('internal_notes').insert({
+    project_id: projectId,
+    organization_id: orgId,
+    author_id: user.id,
+    content: `[PESANAN DIBATALKAN / REFUND] Pesanan dibatalkan atas kesepakatan komplain & pengembalian dana. Alasan: ${reason || 'Komplain Klien'}`,
+    visible_to_client: true
+  })
 
   revalidatePath('/dashboard/shipping/confirmation')
   revalidatePath('/dashboard/shipping/history')

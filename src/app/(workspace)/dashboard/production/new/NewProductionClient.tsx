@@ -15,6 +15,7 @@ export default function NewProductionClient({ clients, services }: { clients: an
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (isSubmitting) return
     setIsSubmitting(true)
     setError(null)
     
